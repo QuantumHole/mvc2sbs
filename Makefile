@@ -10,10 +10,11 @@ include common/license.mk
 include common/makefile.mk
 include common/doxygen.mk
 
-TARGET   := mkvstreams
+TARGET   := mkvmvc2sbs
 
 OBJECTS := \
-	$(BUILD_DIR)/mkvstreams.o \
+	$(BUILD_DIR)/$(TARGET).o \
+	$(BUILD_DIR)/mkvstreamer.o \
 
 .PHONY: all
 

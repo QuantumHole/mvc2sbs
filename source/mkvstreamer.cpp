@@ -1,3 +1,5 @@
+#include "mkvstreamer.h"
+
 #include <ebml/EbmlElement.h>
 #include <ebml/EbmlStream.h>
 #include <ebml/EbmlHead.h>
@@ -18,15 +20,6 @@
 #include <map>
 #include <set>
 #include <stdexcept>
-#include <string>
-
-struct PgsOutput
-{
-	std::ofstream file = {};
-	uint64_t blockCount = 0;
-	uint64_t segmentCount = 0;
-	uint64_t byteCount = 0;
-};
 
 static bool isElement(const libebml::EbmlElement& element, const libebml::EbmlId& id)
 {
@@ -142,13 +135,15 @@ static uint32_t matroskaTimecodeToPgsPts(const int64_t timecode, const uint64_t 
 }
 
 static bool writePgsSupSegments(
-	PgsOutput& output,
+	std::ofstream& output,
 	const unsigned char* data,
 	const size_t size,
-	const uint32_t pts)
+	const uint32_t pts,
+	const size_t trackNumber)
 {
 	if ((data == nullptr) || (size == 0))
 	{
+		std::cerr << "    Leerer PGS-Frame in Track " << trackNumber << std::endl;
 		return false;
 	}
 
@@ -192,24 +187,22 @@ static bool writePgsSupSegments(
 			0x47
 		};
 
-		output.file.write(
+		output.write(
 			reinterpret_cast<const char*>(magic),
 			sizeof(magic));
 
-		writeUint32BE(output.file, pts);
-		writeUint32BE(output.file, 0);
+		writeUint32BE(output, pts);
+		writeUint32BE(output, 0);
 
-		output.file.write(
+		output.write(
 			reinterpret_cast<const char*>(data + offset),
 			static_cast<std::streamsize>(segmentSize));
 
-		if (!output.file)
+		if (!output)
 		{
 			throw std::runtime_error("Fehler beim Schreiben der SUP-Datei");
 		}
 
-		output.byteCount += 10 + segmentSize;
-		output.segmentCount++;
 		wroteAnything = true;
 		offset += segmentSize;
 	}
@@ -219,7 +212,7 @@ static bool writePgsSupSegments(
 
 static void extractPgsBlock(
 	libmatroska::KaxInternalBlock& block,
-	std::map<uint64_t, PgsOutput>& outputs,
+	std::map<uint64_t, std::ofstream>& outputs,
 	const uint64_t clusterTimecode,
 	const uint64_t timecodeScale)
 {
@@ -230,14 +223,12 @@ static void extractPgsBlock(
 		return;
 	}
 
-	const std::map<uint64_t, PgsOutput>::iterator outputIt = outputs.find(trackNumber);
+	const std::map<uint64_t, std::ofstream>::iterator outputIt = outputs.find(trackNumber);
 
 	if (outputIt == outputs.end())
 	{
 		return;
 	}
-
-	PgsOutput& output = outputIt->second;
 
 	/*
 	 * GetRelativeTimestamp() liefert den unskalierten
@@ -247,34 +238,23 @@ static void extractPgsBlock(
 	const int64_t absoluteTimecode = static_cast<int64_t>(clusterTimecode) + relativeTimecode;
 	const uint32_t pts = matroskaTimecodeToPgsPts(absoluteTimecode, timecodeScale);
 
-	output.blockCount++;
-
 	for (unsigned int frameNumber = 0; frameNumber < block.NumberFrames(); frameNumber++)
 	{
 		libmatroska::DataBuffer& data = block.GetBuffer(frameNumber);
 
-		const size_t frameSize = data.Size();
-
-		if ((data.Buffer() == nullptr) || (frameSize == 0))
-		{
-			std::cerr << "    Leerer PGS-Frame in Track " << trackNumber << std::endl;
-			continue;
-		}
-
-		const unsigned char* buffer = reinterpret_cast<const unsigned char*>(data.Buffer());
-
 		writePgsSupSegments(
-			output,
-			buffer,
-			frameSize,
-			pts);
+			outputIt->second,
+			data.Buffer(),
+			data.Size(),
+			pts,
+			trackNumber);
 	}
 }
 
 static bool readBlock(
 	libmatroska::KaxInternalBlock& block,
 	libebml::EbmlStream& stream,
-	std::map<uint64_t, PgsOutput>& outputs,
+	std::map<uint64_t, std::ofstream>& outputs,
 	const uint64_t clusterTimecode,
 	const uint64_t timecodeScale)
 {
@@ -299,7 +279,7 @@ static bool readBlock(
 static void readTracks(
 	libmatroska::KaxTracks& tracksElement,
 	libebml::EbmlStream& stream,
-	std::map<uint64_t, PgsOutput>& pgsOutputs,
+	std::map<uint64_t, std::ofstream>& pgsOutputs,
 	const std::string& inputFilename)
 {
 	int upperLevel = 0;
@@ -351,10 +331,10 @@ static void readTracks(
 
 		const std::string filename = makeSupFilename(inputFilename, number);
 
-		PgsOutput output;
-		output.file.open(filename, std::ios::binary | std::ios::out | std::ios::trunc);
+		std::ofstream output;
+		output.open(filename, std::ios::binary | std::ios::out | std::ios::trunc);
 
-		if (!output.file)
+		if (!output)
 		{
 			throw std::runtime_error("Kann Datei nicht öffnen: " + filename);
 		}
@@ -428,7 +408,7 @@ static uint64_t getClusterEnd(
 
 static void streamBlockGroup(
 	libebml::EbmlStream& stream,
-	std::map<uint64_t, PgsOutput>& outputs,
+	std::map<uint64_t, std::ofstream>& outputs,
 	const uint64_t groupEnd,
 	const size_t fileSize,
 	const uint64_t clusterTimecode,
@@ -521,7 +501,7 @@ static void streamBlockGroup(
 
 static void streamCluster(
 	libebml::EbmlStream& stream,
-	std::map<uint64_t, PgsOutput>& outputs,
+	std::map<uint64_t, std::ofstream>& outputs,
 	const size_t fileSize,
 	const uint64_t clusterEnd,
 	const uint64_t timecodeScale)
@@ -693,7 +673,7 @@ static void streamCluster(
 static void streamSegment(
 	libebml::EbmlStream& stream,
 	const std::string& filename,
-	std::map<uint64_t, PgsOutput>& pgsOutputs,
+	std::map<uint64_t, std::ofstream>& pgsOutputs,
 	const size_t fileSize)
 {
 	int upperLevel = 0;
@@ -769,21 +749,20 @@ static void streamSegment(
 	}
 }
 
-int main(int argc, const char** argv)
+
+MKVStreamer::MKVStreamer(const std::string& filename) :
+    m_input_file_name(filename)
 {
-	if (argc != 2)
-	{
-		std::cerr << "Usage: " << argv[0] << " <file.mkv>" << std::endl;
-		return 1;
-	}
 
-	const std::string filename = argv[1];
+}
 
-	std::map<uint64_t, PgsOutput> pgsOutputs;
+void MKVStreamer::run(void)
+{
+	std::map<uint64_t, std::ofstream> pgsOutputs;
 
 	try
 	{
-		libebml::StdIOCallback file(filename.c_str(), MODE_READ);
+		libebml::StdIOCallback file(m_input_file_name.c_str(), MODE_READ);
 		libebml::EbmlStream stream(file);
 		file.setFilePointer(0, libebml::seek_end);
 		const size_t fileSize = file.getFilePointer();
@@ -828,7 +807,7 @@ int main(int argc, const char** argv)
 			{
 				streamSegment(
 					stream,
-					filename,
+					m_input_file_name,
 					pgsOutputs,
 					fileSize);
 
@@ -853,27 +832,14 @@ int main(int argc, const char** argv)
 	catch (const std::exception& e)
 	{
 		std::cerr << "Fehler: " << e.what() << std::endl;
-		return 1;
+		return;
 	}
 
-	for (std::pair<const uint64_t, PgsOutput>& entry : pgsOutputs)
+	for (std::pair<const uint64_t, std::ofstream>& entry : pgsOutputs)
 	{
-		PgsOutput& output = entry.second;
+		std::ofstream& output = entry.second;
 
-		output.file.flush();
-		output.file.close();
-
-		std::cout
-		    << "Track "
-		    << entry.first
-		    << ": "
-		    << output.blockCount
-		    << " Blocks, "
-		    << output.segmentCount
-		    << " Segmente, "
-		    << output.byteCount
-		    << " Bytes" << std::endl;
+		output.flush();
+		output.close();
 	}
-
-	return 0;
 }
