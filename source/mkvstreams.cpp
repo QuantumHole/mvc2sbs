@@ -16,1064 +16,864 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 
-
-struct PgsTrack
-{
-    std::uint64_t number = 0;
-    std::string codecId = "";
-};
-
 struct PgsOutput
 {
-    std::ofstream file = {};
-    std::uint64_t blockCount = 0;
-    std::uint64_t segmentCount = 0;
-    std::uint64_t byteCount = 0;
+	std::ofstream file = {};
+	uint64_t blockCount = 0;
+	uint64_t segmentCount = 0;
+	uint64_t byteCount = 0;
 };
 
-
-static bool isElement(
-    const libebml::EbmlElement& element,
-    const libebml::EbmlId& id)
+static bool isElement(const libebml::EbmlElement& element, const libebml::EbmlId& id)
 {
-    return element.Generic().ClassId() == id;
+	return element.Generic().ClassId() == id;
 }
-
 
 static bool getTrackNumber(
-    const libmatroska::KaxTrackEntry& trackEntry,
-    std::uint64_t& number)
+	const libmatroska::KaxTrackEntry& trackEntry,
+	uint64_t& number)
 {
-    const auto* master =
-        dynamic_cast<const libebml::EbmlMaster*>(&trackEntry);
+	const libebml::EbmlMaster* master = dynamic_cast<const libebml::EbmlMaster*>(&trackEntry);
 
-    if (master == nullptr)
-        return false;
+	if (master == nullptr)
+	{
+		return false;
+	}
 
-    for (const auto* child : *master)
-    {
-        if (child == nullptr ||
-            !isElement(*child, EBML_ID(libmatroska::KaxTrackNumber)))
-            continue;
+	for (const libebml::EbmlElement* child : *master)
+	{
+		if ((child == nullptr) ||
+		    !isElement(*child, EBML_ID(libmatroska::KaxTrackNumber)))
+		{
+			continue;
+		}
 
-        const auto* value =
-            dynamic_cast<const libmatroska::KaxTrackNumber*>(child);
+		const libmatroska::KaxTrackNumber* value = dynamic_cast<const libmatroska::KaxTrackNumber*>(child);
 
-        if (value == nullptr)
-            return false;
+		if (value == nullptr)
+		{
+			return false;
+		}
 
-        number = value->GetValue();
-        return true;
-    }
+		number = value->GetValue();
+		return true;
+	}
 
-    return false;
+	return false;
 }
 
-
-static std::string getCodecId(
-    const libmatroska::KaxTrackEntry& trackEntry)
+static std::string getCodecId(const libmatroska::KaxTrackEntry& trackEntry)
 {
-    const auto* master =
-        dynamic_cast<const libebml::EbmlMaster*>(&trackEntry);
+	const libebml::EbmlMaster* master = dynamic_cast<const libebml::EbmlMaster*>(&trackEntry);
 
-    if (master == nullptr)
-        return {};
+	if (master == nullptr)
+	{
+		return {};
+	}
 
-    for (const auto* child : *master)
-    {
-        if (child == nullptr ||
-            !isElement(*child, EBML_ID(libmatroska::KaxCodecID)))
-            continue;
+	for (const libebml::EbmlElement* child : *master)
+	{
+		if ((child == nullptr) ||
+		    !isElement(*child, EBML_ID(libmatroska::KaxCodecID)))
+		{
+			continue;
+		}
 
-        const auto* value =
-            dynamic_cast<const libmatroska::KaxCodecID*>(child);
+		const libmatroska::KaxCodecID* value = dynamic_cast<const libmatroska::KaxCodecID*>(child);
 
-        if (value != nullptr)
-            return value->GetValue();
-    }
+		if (value != nullptr)
+		{
+			return value->GetValue();
+		}
+	}
 
-    return {};
+	return {};
 }
 
-
-static std::string makeSupFilename(
-    const std::string& inputFilename,
-    std::uint64_t trackNumber)
+static std::string makeSupFilename(const std::string& inputFilename, const uint64_t trackNumber)
 {
-    const std::size_t slash =
-        inputFilename.find_last_of("/\\");
+	const size_t slash = inputFilename.find_last_of("/\\");
+	const size_t start = (slash == std::string::npos) ? 0 : (slash + 1);
+	const size_t dot = inputFilename.find_last_of('.');
+	const size_t ext = ((dot != std::string::npos) && (dot >= start)) ? dot : inputFilename.size();
+	const std::string directory = (slash == std::string::npos) ? std::string() : inputFilename.substr(0, slash + 1);
 
-    const std::size_t start =
-        slash == std::string::npos ? 0 : slash + 1;
-
-    const std::size_t dot =
-        inputFilename.find_last_of('.');
-
-    const std::size_t ext =
-        dot != std::string::npos && dot >= start
-            ? dot
-            : inputFilename.size();
-
-    const std::string directory =
-        slash == std::string::npos
-            ? std::string()
-            : inputFilename.substr(0, slash + 1);
-
-    return directory +
-           inputFilename.substr(start, ext - start) +
-           "_track" +
-           std::to_string(trackNumber) +
-           ".sup";
+	return directory +
+	       inputFilename.substr(start, ext - start) +
+	       "_track" +
+	       std::to_string(trackNumber) +
+	       ".sup";
 }
 
-
-static void openPgsOutputs(
-    const std::string& inputFilename,
-    const std::map<std::uint64_t, PgsTrack>& tracks,
-    std::map<std::uint64_t, PgsOutput>& outputs)
+static void writeUint32BE(std::ofstream& file, const uint32_t value)
 {
-    for (const auto& entry : tracks)
-    {
-        const auto trackNumber = entry.first;
-        const auto filename =
-            makeSupFilename(inputFilename, trackNumber);
+	const unsigned char buffer[4] =
+	{
+		static_cast<unsigned char>((value >> 24) & 0xff),
+		static_cast<unsigned char>((value >> 16) & 0xff),
+		static_cast<unsigned char>((value >> 8) & 0xff),
+		static_cast<unsigned char>(value & 0xff)
+	};
 
-        PgsOutput output;
-
-        output.file.open(
-            filename,
-            std::ios::binary |
-            std::ios::out |
-            std::ios::trunc);
-
-        if (!output.file)
-            throw std::runtime_error(
-                "Kann Datei nicht öffnen: " + filename);
-
-        std::cout
-            << "Track "
-            << trackNumber
-            << " -> "
-            << filename
-            << '\n';
-
-        outputs.emplace(
-            trackNumber,
-            std::move(output));
-    }
+	file.write(reinterpret_cast<const char*>(buffer), sizeof(buffer));
 }
-
-
-static void writeUint32BE(
-    std::ofstream& file,
-    std::uint32_t value)
-{
-    const unsigned char buffer[4] =
-    {
-        static_cast<unsigned char>((value >> 24) & 0xff),
-        static_cast<unsigned char>((value >> 16) & 0xff),
-        static_cast<unsigned char>((value >> 8) & 0xff),
-        static_cast<unsigned char>(value & 0xff)
-    };
-
-    file.write(
-        reinterpret_cast<const char*>(buffer),
-        sizeof(buffer));
-}
-
 
 /*
  * Matroska-Timecode-Ticks -> PGS 90-kHz-PTS.
  *
  * timecodeScale ist Nanosekunden pro Matroska-Tick.
  */
-static std::uint32_t matroskaTimecodeToPgsPts(
-    std::int64_t timecode,
-    std::uint64_t timecodeScale)
+static uint32_t matroskaTimecodeToPgsPts(const int64_t timecode, const uint64_t timecodeScale)
 {
-    if (timecode <= 0 || timecodeScale == 0)
-        return 0;
+	if ((timecode <= 0) || (timecodeScale == 0))
+	{
+		return 0;
+	}
 
-    const std::uint64_t ticks =
-        static_cast<std::uint64_t>(timecode);
+	const uint64_t ticks = static_cast<uint64_t>(timecode);
+	const uint64_t ns = ticks * timecodeScale;
+	const uint64_t pts = (ns * 90000ULL) / 1000000000ULL;
 
-    const std::uint64_t ns =
-        ticks * timecodeScale;
-
-    const std::uint64_t pts =
-        (ns * 90000ULL) / 1000000000ULL;
-
-    return static_cast<std::uint32_t>(
-        pts & 0xffffffffULL);
+	return static_cast<uint32_t>(pts & 0xffffffffULL);
 }
-
 
 static bool writePgsSupSegments(
-    PgsOutput& output,
-    const unsigned char* data,
-    std::size_t size,
-    std::uint32_t pts)
+	PgsOutput& output,
+	const unsigned char* data,
+	const size_t size,
+	const uint32_t pts)
 {
-    if (data == nullptr || size == 0)
-        return false;
+	if ((data == nullptr) || (size == 0))
+	{
+		return false;
+	}
 
-    std::size_t offset = 0;
-    bool wroteAnything = false;
+	size_t offset = 0;
+	bool wroteAnything = false;
 
-    while (offset < size)
-    {
-        if (size - offset < 3)
-        {
-            std::cerr
-                << "    Ungültiges PGS-Segment\n";
-            return false;
-        }
+	while (offset < size)
+	{
+		if (size - offset < 3)
+		{
+			std::cerr << "    Ungültiges PGS-Segment" << std::endl;
+			return false;
+		}
 
-        const std::uint8_t segmentType =
-            data[offset];
+		const uint8_t segmentType = data[offset];
 
-        const std::uint16_t segmentLength = static_cast<uint16_t>(
-            (static_cast<std::uint16_t>(data[offset + 1]) << 8) |
-             static_cast<std::uint16_t>(data[offset + 2]));
+		const uint16_t segmentLength = static_cast<uint16_t>(
+			(static_cast<uint16_t>(data[offset + 1]) << 8) |
+			static_cast<uint16_t>(data[offset + 2]));
 
-        const std::size_t segmentSize =
-            3 + static_cast<std::size_t>(segmentLength);
+		const size_t segmentSize = 3 + static_cast<size_t>(segmentLength);
 
-        if (segmentSize > size - offset)
-        {
-            std::cerr
-                << "    PGS-Segment außerhalb des Buffers: "
-                << "type=0x"
-                << std::hex
-                << static_cast<unsigned int>(segmentType)
-                << std::dec
-                << ", length="
-                << segmentLength
-                << '\n';
+		if (segmentSize > size - offset)
+		{
+			std::cerr
+			    << "    PGS-Segment außerhalb des Buffers: "
+			    << "type=0x"
+			    << std::hex
+			    << static_cast<unsigned int>(segmentType)
+			    << std::dec
+			    << ", length="
+			    << segmentLength
+			    << std::endl;
 
-            return false;
-        }
+			return false;
+		}
 
-        const unsigned char magic[2] =
-        {
-            0x50,
-            0x47
-        };
+		const unsigned char magic[2] =
+		{
+			0x50,
+			0x47
+		};
 
-        output.file.write(
-            reinterpret_cast<const char*>(magic),
-            sizeof(magic));
+		output.file.write(
+			reinterpret_cast<const char*>(magic),
+			sizeof(magic));
 
-        writeUint32BE(output.file, pts);
-        writeUint32BE(output.file, 0);
+		writeUint32BE(output.file, pts);
+		writeUint32BE(output.file, 0);
 
-        output.file.write(
-            reinterpret_cast<const char*>(data + offset),
-            static_cast<std::streamsize>(segmentSize));
+		output.file.write(
+			reinterpret_cast<const char*>(data + offset),
+			static_cast<std::streamsize>(segmentSize));
 
-        if (!output.file)
-            throw std::runtime_error(
-                "Fehler beim Schreiben der SUP-Datei");
+		if (!output.file)
+		{
+			throw std::runtime_error("Fehler beim Schreiben der SUP-Datei");
+		}
 
-        output.byteCount +=
-            10 + segmentSize;
+		output.byteCount += 10 + segmentSize;
+		output.segmentCount++;
+		wroteAnything = true;
+		offset += segmentSize;
+	}
 
-        ++output.segmentCount;
-
-        wroteAnything = true;
-        offset += segmentSize;
-    }
-
-    return wroteAnything;
+	return wroteAnything;
 }
-
 
 static void extractPgsBlock(
-    libmatroska::KaxInternalBlock& block,
-    const std::map<std::uint64_t, PgsTrack>& tracks,
-    std::map<std::uint64_t, PgsOutput>& outputs,
-    std::uint64_t clusterTimecode,
-    std::uint64_t timecodeScale)
+	libmatroska::KaxInternalBlock& block,
+	std::map<uint64_t, PgsOutput>& outputs,
+	const uint64_t clusterTimecode,
+	const uint64_t timecodeScale)
 {
-    const std::uint64_t trackNumber =
-        block.TrackNum();
+	const uint64_t trackNumber = block.TrackNum();
 
-    if (tracks.find(trackNumber) == tracks.end())
-        return;
+	if (outputs.find(trackNumber) == outputs.end())
+	{
+		return;
+	}
 
-    const auto outputIt =
-        outputs.find(trackNumber);
+	const std::map<uint64_t, PgsOutput>::iterator outputIt = outputs.find(trackNumber);
 
-    if (outputIt == outputs.end())
-        return;
+	if (outputIt == outputs.end())
+	{
+		return;
+	}
 
-    PgsOutput& output =
-        outputIt->second;
+	PgsOutput& output = outputIt->second;
 
-    /*
-     * GetRelativeTimestamp() liefert den unskalierten
-     * relativen Block-Timecode.
-     */
-    const std::int64_t relativeTimecode =
-        block.GetRelativeTimestamp();
+	/*
+	 * GetRelativeTimestamp() liefert den unskalierten
+	 * relativen Block-Timecode.
+	 */
+	const int64_t relativeTimecode = block.GetRelativeTimestamp();
+	const int64_t absoluteTimecode = static_cast<int64_t>(clusterTimecode) + relativeTimecode;
+	const uint32_t pts = matroskaTimecodeToPgsPts(absoluteTimecode, timecodeScale);
 
-    const std::int64_t absoluteTimecode =
-        static_cast<std::int64_t>(clusterTimecode) +
-        relativeTimecode;
+	output.blockCount++;
 
-    const std::uint32_t pts =
-        matroskaTimecodeToPgsPts(
-            absoluteTimecode,
-            timecodeScale);
+	for (unsigned int frameNumber = 0; frameNumber < block.NumberFrames(); frameNumber++)
+	{
+		libmatroska::DataBuffer& data = block.GetBuffer(frameNumber);
 
-    ++output.blockCount;
+		const size_t frameSize = data.Size();
 
-    for (unsigned int frameNumber = 0;
-         frameNumber < block.NumberFrames();
-         ++frameNumber)
-    {
-        libmatroska::DataBuffer& data =
-            block.GetBuffer(frameNumber);
+		if ((data.Buffer() == nullptr) || (frameSize == 0))
+		{
+			std::cerr << "    Leerer PGS-Frame in Track " << trackNumber << std::endl;
+			continue;
+		}
 
-        const std::size_t frameSize =
-            data.Size();
+		const unsigned char* buffer = reinterpret_cast<const unsigned char*>(data.Buffer());
 
-        if (data.Buffer() == nullptr || frameSize == 0)
-        {
-            std::cerr
-                << "    Leerer PGS-Frame in Track "
-                << trackNumber
-                << '\n';
-
-            continue;
-        }
-
-        const auto* buffer =
-            reinterpret_cast<const unsigned char*>(
-                data.Buffer());
-
-        writePgsSupSegments(
-            output,
-            buffer,
-            frameSize,
-            pts);
-    }
+		writePgsSupSegments(
+			output,
+			buffer,
+			frameSize,
+			pts);
+	}
 }
-
 
 static bool readBlock(
-    libmatroska::KaxInternalBlock& block,
-    libebml::EbmlStream& stream,
-    const std::map<std::uint64_t, PgsTrack>& tracks,
-    std::map<std::uint64_t, PgsOutput>& outputs,
-    std::uint64_t clusterTimecode,
-    std::uint64_t timecodeScale)
+	libmatroska::KaxInternalBlock& block,
+	libebml::EbmlStream& stream,
+	std::map<uint64_t, PgsOutput>& outputs,
+	const uint64_t clusterTimecode,
+	const uint64_t timecodeScale)
 {
-    block.ReadData(
-        stream.I_O(),
-        libebml::SCOPE_ALL_DATA);
+	block.ReadData(stream.I_O(), libebml::SCOPE_ALL_DATA);
 
-    const std::uint64_t trackNumber =
-        block.TrackNum();
+	const uint64_t trackNumber = block.TrackNum();
 
-    if (tracks.find(trackNumber) == tracks.end())
-        return true;
+	if (outputs.find(trackNumber) == outputs.end())
+	{
+		return true;
+	}
 
-    extractPgsBlock(
-        block,
-        tracks,
-        outputs,
-        clusterTimecode,
-        timecodeScale);
+	extractPgsBlock(
+		block,
+		outputs,
+		clusterTimecode,
+		timecodeScale);
 
-    return true;
+	return true;
 }
-
 
 static void readTracks(
-    libmatroska::KaxTracks& tracksElement,
-    libebml::EbmlStream& stream,
-    std::map<std::uint64_t, PgsTrack>& pgsTracks)
+	libmatroska::KaxTracks& tracksElement,
+	libebml::EbmlStream& stream,
+	std::map<uint64_t, PgsOutput>& pgsOutputs,
+	const std::string& inputFilename)
 {
-    int upperLevel = 0;
-    libebml::EbmlElement* foundElement = nullptr;
+	int upperLevel = 0;
+	libebml::EbmlElement* foundElement = nullptr;
 
-    tracksElement.Read(
-        stream,
-        tracksElement.Generic().Context,
-        upperLevel,
-        foundElement,
-        false,
-        libebml::SCOPE_ALL_DATA);
+	tracksElement.Read(
+		stream,
+		tracksElement.Generic().Context,
+		upperLevel,
+		foundElement,
+		false,
+		libebml::SCOPE_ALL_DATA);
 
-    delete foundElement;
+	delete foundElement;
 
-    const auto* master =
-        dynamic_cast<const libebml::EbmlMaster*>(
-            &tracksElement);
+	const libebml::EbmlMaster* master = dynamic_cast<const libebml::EbmlMaster*>(&tracksElement);
 
-    if (master == nullptr)
-        return;
+	if (master == nullptr)
+	{
+		return;
+	}
 
-    for (const auto* child : *master)
-    {
-        if (child == nullptr ||
-            !isElement(
-                *child,
-                EBML_ID(libmatroska::KaxTrackEntry)))
-            continue;
+	for (const libebml::EbmlElement* child : *master)
+	{
+		if ((child == nullptr) ||
+		    !isElement(*child, EBML_ID(libmatroska::KaxTrackEntry)))
+		{
+			continue;
+		}
 
-        const auto* entry =
-            dynamic_cast<const libmatroska::KaxTrackEntry*>(
-                child);
+		const libmatroska::KaxTrackEntry* entry = dynamic_cast<const libmatroska::KaxTrackEntry*>(child);
 
-        if (entry == nullptr)
-            continue;
+		if (entry == nullptr)
+		{
+			continue;
+		}
 
-        if (getCodecId(*entry) != "S_HDMV/PGS")
-            continue;
+		if (getCodecId(*entry) != "S_HDMV/PGS")
+		{
+			continue;
+		}
 
-        std::uint64_t number = 0;
+		uint64_t number = 0;
 
-        if (!getTrackNumber(*entry, number))
-            continue;
+		if (!getTrackNumber(*entry, number))
+		{
+			continue;
+		}
 
-        pgsTracks[number] =
-        {
-            number,
-            "S_HDMV/PGS"
-        };
+		const std::string filename = makeSupFilename(inputFilename, number);
 
-        std::cout
-            << "PGS Track "
-            << number
-            << '\n';
-    }
+		PgsOutput output;
+		output.file.open(filename, std::ios::binary | std::ios::out | std::ios::trunc);
+
+		if (!output.file)
+		{
+			throw std::runtime_error("Kann Datei nicht öffnen: " + filename);
+		}
+
+		std::cout << "Track " << number << " -> " << filename << std::endl;
+
+		pgsOutputs.emplace(number, std::move(output));
+	}
 }
 
-
-static std::uint64_t readTimecodeScale(
-    libmatroska::KaxInfo& info,
-    libebml::EbmlStream& stream)
+static uint64_t readTimecodeScale(
+	libmatroska::KaxInfo& info,
+	libebml::EbmlStream& stream)
 {
-    int upperLevel = 0;
-    libebml::EbmlElement* foundElement = nullptr;
+	int upperLevel = 0;
+	libebml::EbmlElement* foundElement = nullptr;
 
-    info.Read(
-        stream,
-        info.Generic().Context,
-        upperLevel,
-        foundElement,
-        false,
-        libebml::SCOPE_ALL_DATA);
+	info.Read(
+		stream,
+		info.Generic().Context,
+		upperLevel,
+		foundElement,
+		false,
+		libebml::SCOPE_ALL_DATA);
 
-    delete foundElement;
+	delete foundElement;
 
-    const auto* master =
-        dynamic_cast<const libebml::EbmlMaster*>(&info);
+	const libebml::EbmlMaster* master = dynamic_cast<const libebml::EbmlMaster*>(&info);
 
-    if (master == nullptr)
-        return 1000000ULL;
+	if (master == nullptr)
+	{
+		return 1000000ULL;
+	}
 
-    for (const auto* child : *master)
-    {
-        if (child == nullptr ||
-            !isElement(
-                *child,
-                EBML_ID(libmatroska::KaxTimecodeScale)))
-            continue;
+	for (const libebml::EbmlElement* child : *master)
+	{
+		if ((child == nullptr) ||
+		    !isElement(*child, EBML_ID(libmatroska::KaxTimecodeScale)))
+		{
+			continue;
+		}
 
-        const auto* scale =
-            dynamic_cast<const libmatroska::KaxTimecodeScale*>(
-                child);
+		const libmatroska::KaxTimecodeScale* scale = dynamic_cast<const libmatroska::KaxTimecodeScale*>(child);
 
-        if (scale != nullptr)
-            return scale->GetValue();
-    }
+		if (scale != nullptr)
+		{
+			return scale->GetValue();
+		}
+	}
 
-    return 1000000ULL;
+	return 1000000ULL;
 }
 
-
-static std::uint64_t getClusterEnd(
-    const libebml::EbmlElement& cluster,
-    std::uint64_t dataStart,
-    std::size_t fileSize)
+static uint64_t getClusterEnd(
+	const libebml::EbmlElement& cluster,
+	const uint64_t dataStart,
+	const size_t fileSize)
 {
-    if (!cluster.IsFiniteSize())
-        return static_cast<std::uint64_t>(fileSize);
+	if (!cluster.IsFiniteSize())
+	{
+		return static_cast<uint64_t>(fileSize);
+	}
 
-    const std::uint64_t size =
-        cluster.GetSize();
+	const uint64_t size = cluster.GetSize();
+	const uint64_t end = dataStart + size;
 
-    const std::uint64_t end =
-        dataStart + size;
-
-    return end > static_cast<std::uint64_t>(fileSize)
-        ? static_cast<std::uint64_t>(fileSize)
-        : end;
+	return end > static_cast<uint64_t>(fileSize)
+	    ? static_cast<uint64_t>(fileSize)
+	    : end;
 }
-
 
 static void streamBlockGroup(
-    libebml::EbmlStream& stream,
-    const std::map<std::uint64_t, PgsTrack>& tracks,
-    std::map<std::uint64_t, PgsOutput>& outputs,
-    std::uint64_t groupEnd,
-    std::size_t fileSize,
-    std::uint64_t clusterTimecode,
-    std::uint64_t timecodeScale)
+	libebml::EbmlStream& stream,
+	std::map<uint64_t, PgsOutput>& outputs,
+	const uint64_t groupEnd,
+	const size_t fileSize,
+	const uint64_t clusterTimecode,
+	const uint64_t timecodeScale)
 {
-    int upperLevel = 0;
+	int upperLevel = 0;
 
-    while (stream.I_O().getFilePointer() < groupEnd)
-    {
-        libebml::EbmlElement* element =
-            stream.FindNextElement(
-                libmatroska::KaxBlockGroup_Context,
-                upperLevel,
-                fileSize,
-                false);
+	while (stream.I_O().getFilePointer() < groupEnd)
+	{
+		libebml::EbmlElement* element =
+			stream.FindNextElement(
+				libmatroska::KaxBlockGroup_Context,
+				upperLevel,
+				fileSize,
+				false);
 
-        if (element == nullptr)
-            return;
+		if (element == nullptr)
+		{
+			return;
+		}
 
-        if (element->GetElementPosition() >= groupEnd)
-        {
-            delete element;
-            return;
-        }
+		if (element->GetElementPosition() >= groupEnd)
+		{
+			delete element;
+			return;
+		}
 
-        auto* block =
-            dynamic_cast<libmatroska::KaxInternalBlock*>(
-                element);
+		libmatroska::KaxInternalBlock* block = dynamic_cast<libmatroska::KaxInternalBlock*>(element);
 
-        if (block != nullptr)
-        {
-            const std::uint64_t dataStart =
-                stream.I_O().getFilePointer();
+		if (block != nullptr)
+		{
+			const uint64_t dataStart = stream.I_O().getFilePointer();
+			const uint64_t blockSize = block->GetSize();
 
-            const std::uint64_t blockSize =
-                block->GetSize();
+			if (block->IsFiniteSize() &&
+			    ((dataStart > groupEnd) ||
+			     (blockSize > groupEnd - dataStart)))
+			{
+				delete element;
 
-            if (block->IsFiniteSize() &&
-                (dataStart > groupEnd ||
-                 blockSize > groupEnd - dataStart))
-            {
-                delete element;
+				stream.I_O().setFilePointer(
+					static_cast<int64_t>(groupEnd),
+					libebml::seek_beginning);
 
-                stream.I_O().setFilePointer(
-                    static_cast<std::int64_t>(groupEnd),
-                    libebml::seek_beginning);
+				return;
+			}
 
-                return;
-            }
+			try
+			{
+				readBlock(
+					*block,
+					stream,
+					outputs,
+					clusterTimecode,
+					timecodeScale);
+			}
+			catch (...)
+			{
+				delete element;
 
-            try
-            {
-                readBlock(
-                    *block,
-                    stream,
-                    tracks,
-                    outputs,
-                    clusterTimecode,
-                    timecodeScale);
-            }
-            catch (...)
-            {
-                delete element;
+				stream.I_O().setFilePointer(
+					static_cast<int64_t>(groupEnd),
+					libebml::seek_beginning);
 
-                stream.I_O().setFilePointer(
-                    static_cast<std::int64_t>(groupEnd),
-                    libebml::seek_beginning);
+				return;
+			}
 
-                return;
-            }
+			delete element;
+			continue;
+		}
 
-            delete element;
-            continue;
-        }
+		try
+		{
+			element->SkipData(stream, element->Generic().Context);
+		}
+		catch (...)
+		{
+			delete element;
 
-        try
-        {
-            element->SkipData(
-                stream,
-                element->Generic().Context);
-        }
-        catch (...)
-        {
-            delete element;
+			stream.I_O().setFilePointer(
+				static_cast<int64_t>(groupEnd),
+				libebml::seek_beginning);
 
-            stream.I_O().setFilePointer(
-                static_cast<std::int64_t>(groupEnd),
-                libebml::seek_beginning);
+			return;
+		}
 
-            return;
-        }
-
-        delete element;
-    }
+		delete element;
+	}
 }
-
 
 static void streamCluster(
-    libebml::EbmlStream& stream,
-    const std::map<std::uint64_t, PgsTrack>& tracks,
-    std::map<std::uint64_t, PgsOutput>& outputs,
-    std::size_t fileSize,
-    std::uint64_t clusterEnd,
-    std::uint64_t timecodeScale)
+	libebml::EbmlStream& stream,
+	std::map<uint64_t, PgsOutput>& outputs,
+	const size_t fileSize,
+	const uint64_t clusterEnd,
+	const uint64_t timecodeScale)
 {
-    int upperLevel = 0;
-    std::uint64_t clusterTimecode = 0;
-    bool haveClusterTimecode = false;
+	int upperLevel = 0;
+	uint64_t clusterTimecode = 0;
+	bool haveClusterTimecode = false;
 
-    while (stream.I_O().getFilePointer() < clusterEnd)
-    {
-        libebml::EbmlElement* element =
-            stream.FindNextElement(
-                libmatroska::KaxCluster_Context,
-                upperLevel,
-                fileSize,
-                false);
+	while (stream.I_O().getFilePointer() < clusterEnd)
+	{
+		libebml::EbmlElement* element =
+			stream.FindNextElement(
+				libmatroska::KaxCluster_Context,
+				upperLevel,
+				fileSize,
+				false);
 
-        if (element == nullptr)
-        {
-            stream.I_O().setFilePointer(
-                static_cast<std::int64_t>(clusterEnd),
-                libebml::seek_beginning);
+		if (element == nullptr)
+		{
+			stream.I_O().setFilePointer(static_cast<int64_t>(clusterEnd), libebml::seek_beginning);
+			return;
+		}
 
-            return;
-        }
+		if (element->GetElementPosition() >= clusterEnd)
+		{
+			delete element;
+			break;
+		}
 
-        if (element->GetElementPosition() >= clusterEnd)
-        {
-            delete element;
-            break;
-        }
+		if (isElement(*element, EBML_ID(libmatroska::KaxClusterTimecode)))
+		{
+			libmatroska::KaxClusterTimecode* timecode = dynamic_cast<libmatroska::KaxClusterTimecode*>(element);
 
-        if (isElement(
-                *element,
-                EBML_ID(libmatroska::KaxClusterTimecode)))
-        {
-            auto* timecode =
-                dynamic_cast<libmatroska::KaxClusterTimecode*>(
-                    element);
+			if (timecode != nullptr)
+			{
+				timecode->ReadData(stream.I_O(), libebml::SCOPE_ALL_DATA);
+				clusterTimecode = timecode->GetValue();
+				haveClusterTimecode = true;
+			}
 
-            if (timecode != nullptr)
-            {
-                timecode->ReadData(
-                    stream.I_O(),
-                    libebml::SCOPE_ALL_DATA);
+			delete element;
+			continue;
+		}
 
-                clusterTimecode =
-                    timecode->GetValue();
+		libmatroska::KaxInternalBlock* block = dynamic_cast<libmatroska::KaxInternalBlock*>(element);
 
-                haveClusterTimecode = true;
-            }
+		if (block != nullptr)
+		{
+			const uint64_t dataStart = stream.I_O().getFilePointer();
+			const uint64_t blockSize = block->GetSize();
 
-            delete element;
-            continue;
-        }
+			if (block->IsFiniteSize() &&
+			    ((dataStart > clusterEnd) ||
+			     (blockSize > clusterEnd - dataStart)))
+			{
+				delete element;
 
-        auto* block =
-            dynamic_cast<libmatroska::KaxInternalBlock*>(
-                element);
+				stream.I_O().setFilePointer(
+					static_cast<int64_t>(clusterEnd),
+					libebml::seek_beginning);
 
-        if (block != nullptr)
-        {
-            const std::uint64_t dataStart =
-                stream.I_O().getFilePointer();
+				return;
+			}
 
-            const std::uint64_t blockSize =
-                block->GetSize();
+			try
+			{
+				if (haveClusterTimecode)
+				{
+					readBlock(
+						*block,
+						stream,
+						outputs,
+						clusterTimecode,
+						timecodeScale);
+				}
+				else
+				{
+					block->ReadData(stream.I_O(), libebml::SCOPE_ALL_DATA);
+				}
+			}
+			catch (...)
+			{
+				delete element;
 
-            if (block->IsFiniteSize() &&
-                (dataStart > clusterEnd ||
-                 blockSize > clusterEnd - dataStart))
-            {
-                delete element;
+				stream.I_O().setFilePointer(
+					static_cast<int64_t>(clusterEnd),
+					libebml::seek_beginning);
 
-                stream.I_O().setFilePointer(
-                    static_cast<std::int64_t>(clusterEnd),
-                    libebml::seek_beginning);
+				return;
+			}
 
-                return;
-            }
+			delete element;
+			continue;
+		}
 
-            try
-            {
-                if (haveClusterTimecode)
-                {
-                    readBlock(
-                        *block,
-                        stream,
-                        tracks,
-                        outputs,
-                        clusterTimecode,
-                        timecodeScale);
-                }
-                else
-                {
-                    block->ReadData(
-                        stream.I_O(),
-                        libebml::SCOPE_ALL_DATA);
-                }
-            }
-            catch (...)
-            {
-                delete element;
+		if (isElement(*element, EBML_ID(libmatroska::KaxBlockGroup)))
+		{
+			const uint64_t groupDataStart = stream.I_O().getFilePointer();
+			const uint64_t groupSize = element->GetSize();
+			uint64_t groupEnd = clusterEnd;
 
-                stream.I_O().setFilePointer(
-                    static_cast<std::int64_t>(clusterEnd),
-                    libebml::seek_beginning);
+			if (element->IsFiniteSize())
+			{
+				if ((groupDataStart > clusterEnd) ||
+				    (groupSize > clusterEnd - groupDataStart))
+				{
+					delete element;
 
-                return;
-            }
+					stream.I_O().setFilePointer(
+						static_cast<int64_t>(clusterEnd),
+						libebml::seek_beginning);
 
-            delete element;
-            continue;
-        }
+					return;
+				}
 
-        if (isElement(
-                *element,
-                EBML_ID(libmatroska::KaxBlockGroup)))
-        {
-            const std::uint64_t groupDataStart =
-                stream.I_O().getFilePointer();
+				groupEnd = groupDataStart + groupSize;
+			}
 
-            const std::uint64_t groupSize =
-                element->GetSize();
+			streamBlockGroup(
+				stream,
+				outputs,
+				groupEnd,
+				fileSize,
+				clusterTimecode,
+				timecodeScale);
 
-            std::uint64_t groupEnd =
-                clusterEnd;
+			delete element;
+			continue;
+		}
 
-            if (element->IsFiniteSize())
-            {
-                if (groupDataStart > clusterEnd ||
-                    groupSize > clusterEnd - groupDataStart)
-                {
-                    delete element;
+		const uint64_t dataStart = stream.I_O().getFilePointer();
 
-                    stream.I_O().setFilePointer(
-                        static_cast<std::int64_t>(clusterEnd),
-                        libebml::seek_beginning);
+		if (element->IsFiniteSize())
+		{
+			const uint64_t size = element->GetSize();
 
-                    return;
-                }
+			if ((dataStart > clusterEnd) ||
+			    (size > clusterEnd - dataStart))
+			{
+				delete element;
 
-                groupEnd =
-                    groupDataStart + groupSize;
-            }
+				stream.I_O().setFilePointer(
+					static_cast<int64_t>(clusterEnd),
+					libebml::seek_beginning);
 
-            streamBlockGroup(
-                stream,
-                tracks,
-                outputs,
-                groupEnd,
-                fileSize,
-                clusterTimecode,
-                timecodeScale);
+				return;
+			}
+		}
 
-            delete element;
-            continue;
-        }
+		try
+		{
+			element->SkipData(stream, element->Generic().Context);
+		}
+		catch (...)
+		{
+			delete element;
 
-        const std::uint64_t dataStart =
-            stream.I_O().getFilePointer();
+			stream.I_O().setFilePointer(
+				static_cast<int64_t>(clusterEnd),
+				libebml::seek_beginning);
 
-        if (element->IsFiniteSize())
-        {
-            const std::uint64_t size =
-                element->GetSize();
+			return;
+		}
 
-            if (dataStart > clusterEnd ||
-                size > clusterEnd - dataStart)
-            {
-                delete element;
-
-                stream.I_O().setFilePointer(
-                    static_cast<std::int64_t>(clusterEnd),
-                    libebml::seek_beginning);
-
-                return;
-            }
-        }
-
-        try
-        {
-            element->SkipData(
-                stream,
-                element->Generic().Context);
-        }
-        catch (...)
-        {
-            delete element;
-
-            stream.I_O().setFilePointer(
-                static_cast<std::int64_t>(clusterEnd),
-                libebml::seek_beginning);
-
-            return;
-        }
-
-        delete element;
-    }
+		delete element;
+	}
 }
-
 
 static void streamSegment(
-    libebml::EbmlStream& stream,
-    const std::string& filename,
-    std::map<std::uint64_t, PgsTrack>& pgsTracks,
-    std::map<std::uint64_t, PgsOutput>& pgsOutputs,
-    std::size_t fileSize)
+	libebml::EbmlStream& stream,
+	const std::string& filename,
+	std::map<uint64_t, PgsOutput>& pgsOutputs,
+	const size_t fileSize)
 {
-    int upperLevel = 0;
-    std::uint64_t timecodeScale = 1000000ULL;
+	int upperLevel = 0;
+	uint64_t timecodeScale = 1000000ULL;
 
-    while (true)
-    {
-        libebml::EbmlElement* element =
-            stream.FindNextElement(
-                libmatroska::KaxSegment_Context,
-                upperLevel,
-                fileSize,
-                false);
+	while (true)
+	{
+		libebml::EbmlElement* element =
+			stream.FindNextElement(
+				libmatroska::KaxSegment_Context,
+				upperLevel,
+				fileSize,
+				false);
 
-        if (element == nullptr)
-            return;
+		if (element == nullptr)
+		{
+			return;
+		}
 
-        if (isElement(
-                *element,
-                EBML_ID(libmatroska::KaxInfo)))
-        {
-            auto* info =
-                dynamic_cast<libmatroska::KaxInfo*>(
-                    element);
+		if (isElement(*element, EBML_ID(libmatroska::KaxInfo)))
+		{
+			libmatroska::KaxInfo* info = dynamic_cast<libmatroska::KaxInfo*>(element);
 
-            if (info != nullptr)
-            {
-                timecodeScale =
-                    readTimecodeScale(
-                        *info,
-                        stream);
+			if (info != nullptr)
+			{
+				timecodeScale = readTimecodeScale(*info, stream);
+			}
 
-                std::cout
-                    << "TimecodeScale: "
-                    << timecodeScale
-                    << " ns\n";
-            }
+			delete element;
+			continue;
+		}
 
-            delete element;
-            continue;
-        }
+		if (isElement(*element, EBML_ID(libmatroska::KaxTracks)))
+		{
+			libmatroska::KaxTracks* tracks = dynamic_cast<libmatroska::KaxTracks*>(element);
 
-        if (isElement(
-                *element,
-                EBML_ID(libmatroska::KaxTracks)))
-        {
-            auto* tracks =
-                dynamic_cast<libmatroska::KaxTracks*>(
-                    element);
+			if (tracks != nullptr)
+			{
+				readTracks(*tracks, stream, pgsOutputs, filename);
+			}
 
-            if (tracks != nullptr)
-            {
-                readTracks(
-                    *tracks,
-                    stream,
-                    pgsTracks);
+			delete element;
+			continue;
+		}
 
-                if (!pgsTracks.empty() &&
-                    pgsOutputs.empty())
-                {
-                    openPgsOutputs(
-                        filename,
-                        pgsTracks,
-                        pgsOutputs);
-                }
-            }
+		if (isElement(*element, EBML_ID(libmatroska::KaxCluster)))
+		{
+			const uint64_t dataStart = stream.I_O().getFilePointer();
+			const uint64_t clusterEnd = getClusterEnd(*element, dataStart, fileSize);
 
-            delete element;
-            continue;
-        }
+			streamCluster(
+				stream,
+				pgsOutputs,
+				fileSize,
+				clusterEnd,
+				timecodeScale);
 
-        if (isElement(
-                *element,
-                EBML_ID(libmatroska::KaxCluster)))
-        {
-            const std::uint64_t dataStart =
-                stream.I_O().getFilePointer();
+			delete element;
+			continue;
+		}
 
-            const std::uint64_t clusterEnd =
-                getClusterEnd(
-                    *element,
-                    dataStart,
-                    fileSize);
+		try
+		{
+			element->SkipData(stream, element->Generic().Context);
+		}
+		catch (...)
+		{
+			delete element;
+			return;
+		}
 
-            streamCluster(
-                stream,
-                pgsTracks,
-                pgsOutputs,
-                fileSize,
-                clusterEnd,
-                timecodeScale);
-
-            delete element;
-            continue;
-        }
-
-        try
-        {
-            element->SkipData(
-                stream,
-                element->Generic().Context);
-        }
-        catch (...)
-        {
-            delete element;
-            return;
-        }
-
-        delete element;
-    }
+		delete element;
+	}
 }
-
 
 int main(int argc, const char** argv)
 {
-    if (argc != 2)
-    {
-        std::cerr
-            << "Usage: "
-            << argv[0]
-            << " <file.mkv>\n";
+	if (argc != 2)
+	{
+		std::cerr << "Usage: " << argv[0] << " <file.mkv>" << std::endl;
+		return 1;
+	}
 
-        return 1;
-    }
+	const std::string filename = argv[1];
 
-    const std::string filename = argv[1];
+	std::map<uint64_t, PgsOutput> pgsOutputs;
 
-    std::map<std::uint64_t, PgsTrack> pgsTracks;
-    std::map<std::uint64_t, PgsOutput> pgsOutputs;
+	try
+	{
+		libebml::StdIOCallback file(filename.c_str(), MODE_READ);
+		libebml::EbmlStream stream(file);
+		file.setFilePointer(0, libebml::seek_end);
+		const size_t fileSize = file.getFilePointer();
+		file.setFilePointer(0, libebml::seek_beginning);
 
-    try
-    {
-        libebml::StdIOCallback file(
-            filename.c_str(),
-            MODE_READ);
+		int upperLevel = 0;
+		while (true)
+		{
+			libebml::EbmlElement* element =
+				stream.FindNextElement(
+					libmatroska::KaxMatroska_Context,
+					upperLevel,
+					fileSize,
+					false);
 
-        libebml::EbmlStream stream(file);
+			if (element == nullptr)
+			{
+				break;
+			}
 
-        file.setFilePointer(
-            0,
-            libebml::seek_end);
+			if (isElement(*element, EBML_ID(libebml::EbmlHead)))
+			{
+				int headerLevel = 0;
+				libebml::EbmlElement* foundElement = nullptr;
 
-        const std::size_t fileSize =
-            file.getFilePointer();
+				element->Read(
+					stream,
+					element->Generic().Context,
+					headerLevel,
+					foundElement,
+					false,
+					libebml::SCOPE_ALL_DATA);
 
-        file.setFilePointer(
-            0,
-            libebml::seek_beginning);
+				delete foundElement;
+				delete element;
 
-        int upperLevel = 0;
+				upperLevel = 0;
+				continue;
+			}
 
-        while (true)
-        {
-            libebml::EbmlElement* element =
-                stream.FindNextElement(
-                    libmatroska::KaxMatroska_Context,
-                    upperLevel,
-                    fileSize,
-                    false);
+			if (isElement(*element, EBML_ID(libmatroska::KaxSegment)))
+			{
+				streamSegment(
+					stream,
+					filename,
+					pgsOutputs,
+					fileSize);
 
-            if (element == nullptr)
-                break;
+				delete element;
+				break;
+			}
 
-            if (isElement(
-                    *element,
-                    EBML_ID(libebml::EbmlHead)))
-            {
-                int headerLevel = 0;
-                libebml::EbmlElement* foundElement = nullptr;
+			try
+			{
+				element->SkipData(stream, element->Generic().Context);
+			}
+			catch (...)
+			{
+				delete element;
+				break;
+			}
 
-                element->Read(
-                    stream,
-                    element->Generic().Context,
-                    headerLevel,
-                    foundElement,
-                    false,
-                    libebml::SCOPE_ALL_DATA);
+			delete element;
+			upperLevel = 0;
+		}
+	}
+	catch (const std::exception& e)
+	{
+		std::cerr << "Fehler: " << e.what() << std::endl;
+		return 1;
+	}
 
-                delete foundElement;
-                delete element;
+	for (std::pair<const uint64_t, PgsOutput>& entry : pgsOutputs)
+	{
+		PgsOutput& output = entry.second;
 
-                upperLevel = 0;
-                continue;
-            }
+		output.file.flush();
+		output.file.close();
 
-            if (isElement(
-                    *element,
-                    EBML_ID(libmatroska::KaxSegment)))
-            {
-                streamSegment(
-                    stream,
-                    filename,
-                    pgsTracks,
-                    pgsOutputs,
-                    fileSize);
+		std::cout
+		    << "Track "
+		    << entry.first
+		    << ": "
+		    << output.blockCount
+		    << " Blocks, "
+		    << output.segmentCount
+		    << " Segmente, "
+		    << output.byteCount
+		    << " Bytes" << std::endl;
+	}
 
-                delete element;
-                break;
-            }
-
-            try
-            {
-                element->SkipData(
-                    stream,
-                    element->Generic().Context);
-            }
-            catch (...)
-            {
-                delete element;
-                break;
-            }
-
-            delete element;
-            upperLevel = 0;
-        }
-    }
-    catch (const std::exception& e)
-    {
-        std::cerr
-            << "Fehler: "
-            << e.what()
-            << '\n';
-
-        return 1;
-    }
-
-    for (auto& entry : pgsOutputs)
-    {
-        PgsOutput& output = entry.second;
-
-        output.file.flush();
-        output.file.close();
-
-        std::cout
-            << "Track "
-            << entry.first
-            << ": "
-            << output.blockCount
-            << " Blocks, "
-            << output.segmentCount
-            << " Segmente, "
-            << output.byteCount
-            << " Bytes\n";
-    }
-
-    return 0;
+	return 0;
 }
