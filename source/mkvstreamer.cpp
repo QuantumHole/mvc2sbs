@@ -1,13 +1,10 @@
 #include "mkvstreamer.h"
 
 #include <ebml/EbmlElement.h>
-#include <ebml/EbmlStream.h>
 #include <ebml/EbmlHead.h>
 #include <ebml/StdIOCallback.h>
 
 #include <matroska/KaxContexts.h>
-#include <matroska/KaxBlock.h>
-#include <matroska/KaxTracks.h>
 #include <matroska/KaxCluster.h>
 #include <matroska/KaxClusterData.h>
 #include <matroska/KaxSegment.h>
@@ -210,141 +207,6 @@ static bool writePgsSupSegments(
 	return wroteAnything;
 }
 
-static void extractPgsBlock(
-	libmatroska::KaxInternalBlock& block,
-	std::map<uint64_t, std::ofstream>& outputs,
-	const uint64_t clusterTimecode,
-	const uint64_t timecodeScale)
-{
-	const uint64_t trackNumber = block.TrackNum();
-
-	if (outputs.find(trackNumber) == outputs.end())
-	{
-		return;
-	}
-
-	const std::map<uint64_t, std::ofstream>::iterator outputIt = outputs.find(trackNumber);
-
-	if (outputIt == outputs.end())
-	{
-		return;
-	}
-
-	/*
-	 * GetRelativeTimestamp() liefert den unskalierten
-	 * relativen Block-Timecode.
-	 */
-	const int64_t relativeTimecode = block.GetRelativeTimestamp();
-	const int64_t absoluteTimecode = static_cast<int64_t>(clusterTimecode) + relativeTimecode;
-	const uint32_t pts = matroskaTimecodeToPgsPts(absoluteTimecode, timecodeScale);
-
-	for (unsigned int frameNumber = 0; frameNumber < block.NumberFrames(); frameNumber++)
-	{
-		libmatroska::DataBuffer& data = block.GetBuffer(frameNumber);
-
-		writePgsSupSegments(
-			outputIt->second,
-			data.Buffer(),
-			data.Size(),
-			pts,
-			trackNumber);
-	}
-}
-
-static bool readBlock(
-	libmatroska::KaxInternalBlock& block,
-	libebml::EbmlStream& stream,
-	std::map<uint64_t, std::ofstream>& outputs,
-	const uint64_t clusterTimecode,
-	const uint64_t timecodeScale)
-{
-	block.ReadData(stream.I_O(), libebml::SCOPE_ALL_DATA);
-
-	const uint64_t trackNumber = block.TrackNum();
-
-	if (outputs.find(trackNumber) == outputs.end())
-	{
-		return true;
-	}
-
-	extractPgsBlock(
-		block,
-		outputs,
-		clusterTimecode,
-		timecodeScale);
-
-	return true;
-}
-
-static void readTracks(
-	libmatroska::KaxTracks& tracksElement,
-	libebml::EbmlStream& stream,
-	std::map<uint64_t, std::ofstream>& pgsOutputs,
-	const std::string& inputFilename)
-{
-	int upperLevel = 0;
-	libebml::EbmlElement* foundElement = nullptr;
-
-	tracksElement.Read(
-		stream,
-		tracksElement.Generic().Context,
-		upperLevel,
-		foundElement,
-		false,
-		libebml::SCOPE_ALL_DATA);
-
-	delete foundElement;
-
-	const libebml::EbmlMaster* master = dynamic_cast<const libebml::EbmlMaster*>(&tracksElement);
-
-	if (master == nullptr)
-	{
-		return;
-	}
-
-	for (const libebml::EbmlElement* child : *master)
-	{
-		if ((child == nullptr) ||
-		    !isElement(*child, EBML_ID(libmatroska::KaxTrackEntry)))
-		{
-			continue;
-		}
-
-		const libmatroska::KaxTrackEntry* entry = dynamic_cast<const libmatroska::KaxTrackEntry*>(child);
-
-		if (entry == nullptr)
-		{
-			continue;
-		}
-
-		if (getCodecId(*entry) != "S_HDMV/PGS")
-		{
-			continue;
-		}
-
-		uint64_t number = 0;
-
-		if (!getTrackNumber(*entry, number))
-		{
-			continue;
-		}
-
-		const std::string filename = makeSupFilename(inputFilename, number);
-
-		std::ofstream output;
-		output.open(filename, std::ios::binary | std::ios::out | std::ios::trunc);
-
-		if (!output)
-		{
-			throw std::runtime_error("Kann Datei nicht öffnen: " + filename);
-		}
-
-		std::cout << "Track " << number << " -> " << filename << std::endl;
-
-		pgsOutputs.emplace(number, std::move(output));
-	}
-}
-
 static uint64_t readTimecodeScale(
 	libmatroska::KaxInfo& info,
 	libebml::EbmlStream& stream)
@@ -406,11 +268,70 @@ static uint64_t getClusterEnd(
 	    : end;
 }
 
-static void streamBlockGroup(
+
+
+
+
+MKVStreamer::MKVStreamer(const std::string& filename) :
+    m_input_file_name(filename),
+    m_input_file_size(0),
+    m_output_pgs(),
+    m_converters()
+{
+}
+
+MKVStreamer::~MKVStreamer(void)
+{
+    for (std::map<uint64_t, TrackConverter*>::iterator it = m_converters.begin(); it != m_converters.end(); ++it)
+    {
+        delete it->second;
+    }
+    m_converters.clear();
+}
+
+void MKVStreamer::readBlock(
+	libmatroska::KaxInternalBlock& block,
 	libebml::EbmlStream& stream,
-	std::map<uint64_t, std::ofstream>& outputs,
+	const uint64_t clusterTimecode,
+	const uint64_t timecodeScale)
+{
+	block.ReadData(stream.I_O(), libebml::SCOPE_ALL_DATA);
+
+	const uint64_t trackNumber = block.TrackNum();
+	const std::map<uint64_t, std::ofstream>::iterator outputIt = m_output_pgs.find(trackNumber);
+
+	if (outputIt == m_output_pgs.end())
+	{
+		return;
+	}
+
+	/*
+	 * GetRelativeTimestamp() liefert den unskalierten
+	 * relativen Block-Timecode.
+	 */
+	const int64_t relativeTimecode = block.GetRelativeTimestamp();
+	const int64_t absoluteTimecode = static_cast<int64_t>(clusterTimecode) + relativeTimecode;
+	const uint32_t pts = matroskaTimecodeToPgsPts(absoluteTimecode, timecodeScale);
+
+	for (unsigned int frameNumber = 0; frameNumber < block.NumberFrames(); frameNumber++)
+	{
+		libmatroska::DataBuffer& data = block.GetBuffer(frameNumber);
+
+		writePgsSupSegments(
+			outputIt->second,
+			data.Buffer(),
+			data.Size(),
+			pts,
+			trackNumber);
+
+        // m_converters[trackNumber]->add_data(data.Buffer(), data.Size());
+	}
+}
+
+/** process block group and iterate over blocks. */
+void MKVStreamer::streamBlockGroup(
+	libebml::EbmlStream& stream,
 	const uint64_t groupEnd,
-	const size_t fileSize,
 	const uint64_t clusterTimecode,
 	const uint64_t timecodeScale)
 {
@@ -422,7 +343,7 @@ static void streamBlockGroup(
 			stream.FindNextElement(
 				libmatroska::KaxBlockGroup_Context,
 				upperLevel,
-				fileSize,
+				m_input_file_size,
 				false);
 
 		if (element == nullptr)
@@ -458,12 +379,7 @@ static void streamBlockGroup(
 
 			try
 			{
-				readBlock(
-					*block,
-					stream,
-					outputs,
-					clusterTimecode,
-					timecodeScale);
+				readBlock(*block, stream, clusterTimecode, timecodeScale);
 			}
 			catch (...)
 			{
@@ -499,10 +415,9 @@ static void streamBlockGroup(
 	}
 }
 
-static void streamCluster(
+/** processes clusters, iterates over blocks. */
+void MKVStreamer::streamCluster(
 	libebml::EbmlStream& stream,
-	std::map<uint64_t, std::ofstream>& outputs,
-	const size_t fileSize,
 	const uint64_t clusterEnd,
 	const uint64_t timecodeScale)
 {
@@ -516,7 +431,7 @@ static void streamCluster(
 			stream.FindNextElement(
 				libmatroska::KaxCluster_Context,
 				upperLevel,
-				fileSize,
+				m_input_file_size,
 				false);
 
 		if (element == nullptr)
@@ -570,12 +485,7 @@ static void streamCluster(
 			{
 				if (haveClusterTimecode)
 				{
-					readBlock(
-						*block,
-						stream,
-						outputs,
-						clusterTimecode,
-						timecodeScale);
+					readBlock(*block, stream, clusterTimecode, timecodeScale);
 				}
 				else
 				{
@@ -620,13 +530,7 @@ static void streamCluster(
 				groupEnd = groupDataStart + groupSize;
 			}
 
-			streamBlockGroup(
-				stream,
-				outputs,
-				groupEnd,
-				fileSize,
-				clusterTimecode,
-				timecodeScale);
+			streamBlockGroup(stream, groupEnd, clusterTimecode, timecodeScale);
 
 			delete element;
 			continue;
@@ -670,11 +574,77 @@ static void streamCluster(
 	}
 }
 
-static void streamSegment(
-	libebml::EbmlStream& stream,
-	const std::string& filename,
-	std::map<uint64_t, std::ofstream>& pgsOutputs,
-	const size_t fileSize)
+/** reads track list.
+ * associates tracks to TrackConverters
+ * before iterating over Clusters and Blocks.
+ */
+void MKVStreamer::readTracks(libmatroska::KaxTracks& tracksElement, libebml::EbmlStream& stream)
+{
+	int upperLevel = 0;
+	libebml::EbmlElement* foundElement = nullptr;
+
+	tracksElement.Read(
+		stream,
+		tracksElement.Generic().Context,
+		upperLevel,
+		foundElement,
+		false,
+		libebml::SCOPE_ALL_DATA);
+
+	delete foundElement;
+
+	const libebml::EbmlMaster* master = dynamic_cast<const libebml::EbmlMaster*>(&tracksElement);
+
+	if (master == nullptr)
+	{
+		return;
+	}
+
+	for (const libebml::EbmlElement* child : *master)
+	{
+		if ((child == nullptr) ||
+		    !isElement(*child, EBML_ID(libmatroska::KaxTrackEntry)))
+		{
+			continue;
+		}
+
+		const libmatroska::KaxTrackEntry* entry = dynamic_cast<const libmatroska::KaxTrackEntry*>(child);
+
+		if (entry == nullptr)
+		{
+			continue;
+		}
+
+		uint64_t number = 0;
+
+		if (!getTrackNumber(*entry, number))
+		{
+			continue;
+		}
+
+		if (getCodecId(*entry) != "S_HDMV/PGS")
+		{
+			continue;
+		}
+
+		const std::string filename = makeSupFilename(m_input_file_name, number);
+
+		std::ofstream output;
+		output.open(filename, std::ios::binary | std::ios::out | std::ios::trunc);
+
+		if (!output)
+		{
+			throw std::runtime_error("Kann Datei nicht öffnen: " + filename);
+		}
+
+		std::cout << "Track " << number << " -> " << filename << std::endl;
+
+		m_output_pgs.emplace(number, std::move(output));
+        m_converters[number] = new TrackConverter(m_input_file_name, "S_HDMV/PGS");
+	}
+}
+
+void MKVStreamer::streamSegment(libebml::EbmlStream& stream, const size_t fileSize)
 {
 	int upperLevel = 0;
 	uint64_t timecodeScale = 1000000ULL;
@@ -682,11 +652,7 @@ static void streamSegment(
 	while (true)
 	{
 		libebml::EbmlElement* element =
-			stream.FindNextElement(
-				libmatroska::KaxSegment_Context,
-				upperLevel,
-				fileSize,
-				false);
+			stream.FindNextElement(libmatroska::KaxSegment_Context, upperLevel, fileSize, false);
 
 		if (element == nullptr)
 		{
@@ -712,7 +678,7 @@ static void streamSegment(
 
 			if (tracks != nullptr)
 			{
-				readTracks(*tracks, stream, pgsOutputs, filename);
+				readTracks(*tracks, stream);
 			}
 
 			delete element;
@@ -724,12 +690,7 @@ static void streamSegment(
 			const uint64_t dataStart = stream.I_O().getFilePointer();
 			const uint64_t clusterEnd = getClusterEnd(*element, dataStart, fileSize);
 
-			streamCluster(
-				stream,
-				pgsOutputs,
-				fileSize,
-				clusterEnd,
-				timecodeScale);
+			streamCluster(stream, clusterEnd, timecodeScale);
 
 			delete element;
 			continue;
@@ -749,23 +710,14 @@ static void streamSegment(
 	}
 }
 
-
-MKVStreamer::MKVStreamer(const std::string& filename) :
-    m_input_file_name(filename)
-{
-
-}
-
 void MKVStreamer::run(void)
 {
-	std::map<uint64_t, std::ofstream> pgsOutputs;
-
 	try
 	{
 		libebml::StdIOCallback file(m_input_file_name.c_str(), MODE_READ);
 		libebml::EbmlStream stream(file);
 		file.setFilePointer(0, libebml::seek_end);
-		const size_t fileSize = file.getFilePointer();
+		m_input_file_size = file.getFilePointer();
 		file.setFilePointer(0, libebml::seek_beginning);
 
 		int upperLevel = 0;
@@ -775,7 +727,7 @@ void MKVStreamer::run(void)
 				stream.FindNextElement(
 					libmatroska::KaxMatroska_Context,
 					upperLevel,
-					fileSize,
+					m_input_file_size,
 					false);
 
 			if (element == nullptr)
@@ -805,12 +757,7 @@ void MKVStreamer::run(void)
 
 			if (isElement(*element, EBML_ID(libmatroska::KaxSegment)))
 			{
-				streamSegment(
-					stream,
-					m_input_file_name,
-					pgsOutputs,
-					fileSize);
-
+				streamSegment(stream, m_input_file_size);
 				delete element;
 				break;
 			}
@@ -835,7 +782,7 @@ void MKVStreamer::run(void)
 		return;
 	}
 
-	for (std::pair<const uint64_t, std::ofstream>& entry : pgsOutputs)
+	for (std::pair<const uint64_t, std::ofstream>& entry : m_output_pgs)
 	{
 		std::ofstream& output = entry.second;
 

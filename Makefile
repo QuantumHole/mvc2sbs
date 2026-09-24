@@ -15,6 +15,7 @@ TARGET   := mkvmvc2sbs
 OBJECTS := \
 	$(BUILD_DIR)/$(TARGET).o \
 	$(BUILD_DIR)/mkvstreamer.o \
+	$(BUILD_DIR)/trackconverter.o \
 
 .PHONY: all
 
