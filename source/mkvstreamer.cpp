@@ -1,4 +1,5 @@
 #include "mkvstreamer.h"
+#include "pgsconverter.h"
 
 #include <ebml/EbmlElement.h>
 #include <ebml/EbmlHead.h>
@@ -324,7 +325,7 @@ void MKVStreamer::readBlock(
 			pts,
 			trackNumber);
 
-        // m_converters[trackNumber]->add_data(data.Buffer(), data.Size());
+        m_converters[trackNumber]->add_data(data.Buffer(), data.Size());
 	}
 }
 
@@ -640,7 +641,7 @@ void MKVStreamer::readTracks(libmatroska::KaxTracks& tracksElement, libebml::Ebm
 		std::cout << "Track " << number << " -> " << filename << std::endl;
 
 		m_output_pgs.emplace(number, std::move(output));
-        m_converters[number] = new TrackConverter(m_input_file_name, "S_HDMV/PGS");
+        m_converters[number] = new PGSConverter("eng", m_input_file_name, "S_HDMV/PGS");
 	}
 }
 

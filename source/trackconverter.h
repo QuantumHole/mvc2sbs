@@ -14,13 +14,14 @@ class TrackConverter
         std::mutex m_mutex;
         std::vector<uint8_t> m_data_buffer;
         std::thread* m_thread;
+        bool m_keep_running;
 
         TrackConverter(const TrackConverter&);
         TrackConverter& operator=(const TrackConverter&);
         static void runner(TrackConverter* instance);
 
     protected:
-        // virtual void process_data(void) = 0;
+        virtual void process_data(void) = 0;
 
     public:
         explicit TrackConverter(const std::string& input_file_name, const std::string& track_id);

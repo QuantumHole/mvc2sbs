@@ -16,6 +16,7 @@ OBJECTS := \
 	$(BUILD_DIR)/$(TARGET).o \
 	$(BUILD_DIR)/mkvstreamer.o \
 	$(BUILD_DIR)/trackconverter.o \
+	$(BUILD_DIR)/pgsconverter.o \
 
 .PHONY: all
 
