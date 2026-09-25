@@ -4,8 +4,8 @@
 #include <fstream>
 
 PGSConverter::PGSConverter(const std::string& input_file_name, const size_t track_number, const std::string& track_id, const std::string& language) :
-    TrackConverter(input_file_name, track_number, track_id),
-    m_language(language)
+	TrackConverter(input_file_name, track_number, track_id),
+	m_language(language)
 {
 }
 
@@ -15,7 +15,7 @@ PGSConverter::~PGSConverter(void)
 
 const std::string PGSConverter::output_extension(void) const
 {
-    return m_language + ".srt";
+	return "." + m_language + ".sup";
 }
 
 void PGSConverter::writeUint32BE(const uint32_t value)
@@ -39,7 +39,7 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const uint64
 		return 0;
 	}
 
-    const size_t size = data.size();
+	const size_t size = data.size();
 	size_t offset = 0;
 
 	while (offset < size)

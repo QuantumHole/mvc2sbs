@@ -19,6 +19,9 @@
 #include <set>
 #include <stdexcept>
 
+// libebml      1.4.7
+// libmatroska  1.7.2
+
 static bool isElement(const libebml::EbmlElement& element, const libebml::EbmlId& id)
 {
 	return element.Generic().ClassId() == id;
@@ -147,19 +150,19 @@ static uint64_t getClusterEnd(
 }
 
 MKVStreamer::MKVStreamer(const std::string& filename) :
-    m_input_file_name(filename),
-    m_input_file_size(0),
-    m_converters()
+	m_input_file_name(filename),
+	m_input_file_size(0),
+	m_converters()
 {
 }
 
 MKVStreamer::~MKVStreamer(void)
 {
-    for (std::map<uint64_t, TrackConverter*>::iterator it = m_converters.begin(); it != m_converters.end(); ++it)
-    {
-        delete it->second;
-    }
-    m_converters.clear();
+	for (std::map<uint64_t, TrackConverter*>::iterator it = m_converters.begin(); it != m_converters.end(); ++it)
+	{
+		delete it->second;
+	}
+	m_converters.clear();
 }
 
 void MKVStreamer::readBlock(
@@ -184,6 +187,7 @@ void MKVStreamer::readBlock(
 	 */
 	const int64_t relativeTimecode = block.GetRelativeTimestamp();
 	const int64_t absoluteTimecode = static_cast<int64_t>(clusterTimecode) + relativeTimecode;
+
 	if ((absoluteTimecode <= 0) || (timecodeScale == 0))
 	{
 		return;
@@ -193,7 +197,7 @@ void MKVStreamer::readBlock(
 	for (unsigned int frameNumber = 0; frameNumber < block.NumberFrames(); frameNumber++)
 	{
 		libmatroska::DataBuffer& data = block.GetBuffer(frameNumber);
-        m_converters[trackNumber]->add_data(data.Buffer(), data.Size(), ns);
+		m_converters[trackNumber]->add_data(data.Buffer(), data.Size(), ns);
 	}
 }
 
@@ -491,12 +495,15 @@ void MKVStreamer::readTracks(libmatroska::KaxTracks& tracksElement, libebml::Ebm
 			continue;
 		}
 
-		if (getCodecId(*entry) != "S_HDMV/PGS")
-		{
-			continue;
-		}
+		libmatroska::KaxTrackLanguage* track_lang = static_cast<libmatroska::KaxTrackLanguage*>(
+			entry->FindFirstElt(EBML_INFO(libmatroska::KaxTrackLanguage)));
 
-        m_converters[number] = new PGSConverter(m_input_file_name, number, "S_HDMV/PGS", "eng");
+		const std::string language = (track_lang ? track_lang->GetValue() : "und");
+
+		if (getCodecId(*entry) == "S_HDMV/PGS")
+		{
+			m_converters[number] = new PGSConverter(m_input_file_name, number, "S_HDMV/PGS", language);
+		}
 	}
 }
 
