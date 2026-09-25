@@ -15,7 +15,6 @@ class MKVStreamer
     private:
         const std::string m_input_file_name;
         size_t m_input_file_size;
-    	std::map<uint64_t, std::ofstream> m_output_pgs;
         std::map<uint64_t, TrackConverter*> m_converters;
 
         void readBlock(

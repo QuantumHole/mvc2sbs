@@ -85,129 +85,6 @@ static std::string getCodecId(const libmatroska::KaxTrackEntry& trackEntry)
 	return {};
 }
 
-static std::string makeSupFilename(const std::string& inputFilename, const uint64_t trackNumber)
-{
-	const size_t slash = inputFilename.find_last_of("/\\");
-	const size_t start = (slash == std::string::npos) ? 0 : (slash + 1);
-	const size_t dot = inputFilename.find_last_of('.');
-	const size_t ext = ((dot != std::string::npos) && (dot >= start)) ? dot : inputFilename.size();
-	const std::string directory = (slash == std::string::npos) ? std::string() : inputFilename.substr(0, slash + 1);
-
-	return directory +
-	       inputFilename.substr(start, ext - start) +
-	       "_track" +
-	       std::to_string(trackNumber) +
-	       ".sup";
-}
-
-static void writeUint32BE(std::ofstream& file, const uint32_t value)
-{
-	const unsigned char buffer[4] =
-	{
-		static_cast<unsigned char>((value >> 24) & 0xff),
-		static_cast<unsigned char>((value >> 16) & 0xff),
-		static_cast<unsigned char>((value >> 8) & 0xff),
-		static_cast<unsigned char>(value & 0xff)
-	};
-
-	file.write(reinterpret_cast<const char*>(buffer), sizeof(buffer));
-}
-
-/*
- * Matroska-Timecode-Ticks -> PGS 90-kHz-PTS.
- *
- * timecodeScale ist Nanosekunden pro Matroska-Tick.
- */
-static uint32_t matroskaTimecodeToPgsPts(const int64_t timecode, const uint64_t timecodeScale)
-{
-	if ((timecode <= 0) || (timecodeScale == 0))
-	{
-		return 0;
-	}
-
-	const uint64_t ticks = static_cast<uint64_t>(timecode);
-	const uint64_t ns = ticks * timecodeScale;
-	const uint64_t pts = (ns * 90000ULL) / 1000000000ULL;
-
-	return static_cast<uint32_t>(pts & 0xffffffffULL);
-}
-
-static bool writePgsSupSegments(
-	std::ofstream& output,
-	const unsigned char* data,
-	const size_t size,
-	const uint32_t pts,
-	const size_t trackNumber)
-{
-	if ((data == nullptr) || (size == 0))
-	{
-		std::cerr << "    Leerer PGS-Frame in Track " << trackNumber << std::endl;
-		return false;
-	}
-
-	size_t offset = 0;
-	bool wroteAnything = false;
-
-	while (offset < size)
-	{
-		if (size - offset < 3)
-		{
-			std::cerr << "    Ungültiges PGS-Segment" << std::endl;
-			return false;
-		}
-
-		const uint8_t segmentType = data[offset];
-
-		const uint16_t segmentLength = static_cast<uint16_t>(
-			(static_cast<uint16_t>(data[offset + 1]) << 8) |
-			static_cast<uint16_t>(data[offset + 2]));
-
-		const size_t segmentSize = 3 + static_cast<size_t>(segmentLength);
-
-		if (segmentSize > size - offset)
-		{
-			std::cerr
-			    << "    PGS-Segment außerhalb des Buffers: "
-			    << "type=0x"
-			    << std::hex
-			    << static_cast<unsigned int>(segmentType)
-			    << std::dec
-			    << ", length="
-			    << segmentLength
-			    << std::endl;
-
-			return false;
-		}
-
-		const unsigned char magic[2] =
-		{
-			0x50,
-			0x47
-		};
-
-		output.write(
-			reinterpret_cast<const char*>(magic),
-			sizeof(magic));
-
-		writeUint32BE(output, pts);
-		writeUint32BE(output, 0);
-
-		output.write(
-			reinterpret_cast<const char*>(data + offset),
-			static_cast<std::streamsize>(segmentSize));
-
-		if (!output)
-		{
-			throw std::runtime_error("Fehler beim Schreiben der SUP-Datei");
-		}
-
-		wroteAnything = true;
-		offset += segmentSize;
-	}
-
-	return wroteAnything;
-}
-
 static uint64_t readTimecodeScale(
 	libmatroska::KaxInfo& info,
 	libebml::EbmlStream& stream)
@@ -269,14 +146,9 @@ static uint64_t getClusterEnd(
 	    : end;
 }
 
-
-
-
-
 MKVStreamer::MKVStreamer(const std::string& filename) :
     m_input_file_name(filename),
     m_input_file_size(0),
-    m_output_pgs(),
     m_converters()
 {
 }
@@ -299,9 +171,9 @@ void MKVStreamer::readBlock(
 	block.ReadData(stream.I_O(), libebml::SCOPE_ALL_DATA);
 
 	const uint64_t trackNumber = block.TrackNum();
-	const std::map<uint64_t, std::ofstream>::iterator outputIt = m_output_pgs.find(trackNumber);
+	const std::map<uint64_t, TrackConverter*>::iterator outputIt = m_converters.find(trackNumber);
 
-	if (outputIt == m_output_pgs.end())
+	if (outputIt == m_converters.end())
 	{
 		return;
 	}
@@ -312,20 +184,16 @@ void MKVStreamer::readBlock(
 	 */
 	const int64_t relativeTimecode = block.GetRelativeTimestamp();
 	const int64_t absoluteTimecode = static_cast<int64_t>(clusterTimecode) + relativeTimecode;
-	const uint32_t pts = matroskaTimecodeToPgsPts(absoluteTimecode, timecodeScale);
+	if ((absoluteTimecode <= 0) || (timecodeScale == 0))
+	{
+		return;
+	}
+	const uint64_t ns = static_cast<uint64_t>(absoluteTimecode) * timecodeScale;
 
 	for (unsigned int frameNumber = 0; frameNumber < block.NumberFrames(); frameNumber++)
 	{
 		libmatroska::DataBuffer& data = block.GetBuffer(frameNumber);
-
-		writePgsSupSegments(
-			outputIt->second,
-			data.Buffer(),
-			data.Size(),
-			pts,
-			trackNumber);
-
-        m_converters[trackNumber]->add_data(data.Buffer(), data.Size());
+        m_converters[trackNumber]->add_data(data.Buffer(), data.Size(), ns);
 	}
 }
 
@@ -628,20 +496,7 @@ void MKVStreamer::readTracks(libmatroska::KaxTracks& tracksElement, libebml::Ebm
 			continue;
 		}
 
-		const std::string filename = makeSupFilename(m_input_file_name, number);
-
-		std::ofstream output;
-		output.open(filename, std::ios::binary | std::ios::out | std::ios::trunc);
-
-		if (!output)
-		{
-			throw std::runtime_error("Kann Datei nicht öffnen: " + filename);
-		}
-
-		std::cout << "Track " << number << " -> " << filename << std::endl;
-
-		m_output_pgs.emplace(number, std::move(output));
-        m_converters[number] = new PGSConverter("eng", m_input_file_name, "S_HDMV/PGS");
+        m_converters[number] = new PGSConverter(m_input_file_name, number, "S_HDMV/PGS", "eng");
 	}
 }
 
@@ -781,13 +636,5 @@ void MKVStreamer::run(void)
 	{
 		std::cerr << "Fehler: " << e.what() << std::endl;
 		return;
-	}
-
-	for (std::pair<const uint64_t, std::ofstream>& entry : m_output_pgs)
-	{
-		std::ofstream& output = entry.second;
-
-		output.flush();
-		output.close();
 	}
 }
