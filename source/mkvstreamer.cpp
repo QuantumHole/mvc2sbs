@@ -199,6 +199,9 @@ void MKVStreamer::readBlock(
 		libmatroska::DataBuffer& data = block.GetBuffer(frameNumber);
 		m_converters[trackNumber]->add_data(data.Buffer(), data.Size(), ns);
 	}
+
+	const double seconds = static_cast<double>(ns) / 1e9;
+	std::cout << "queued timecode: " << seconds << "s.\r";
 }
 
 /** process block group and iterate over blocks. */

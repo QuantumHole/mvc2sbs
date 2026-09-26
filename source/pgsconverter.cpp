@@ -8,13 +8,14 @@
 
 static std::vector<uint8_t> writeUint32BE(const uint32_t value)
 {
-	std::vector<uint8_t> data = 
+	std::vector<uint8_t> data =
 	{
 		static_cast<uint8_t>((value >> 24) & 0xff),
 		static_cast<uint8_t>((value >> 16) & 0xff),
 		static_cast<uint8_t>((value >> 8) & 0xff),
 		static_cast<uint8_t>(value & 0xff)
 	};
+
 	return data;
 }
 
@@ -50,7 +51,7 @@ static bool saveRGBA32AsPNG(
 		return false;
 	}
 
-	const std::size_t expectedSize = static_cast<std::size_t>(width) * height;
+	const size_t expectedSize = static_cast<size_t>(width) * height;
 
 	if (pixels.size() != expectedSize)
 	{
@@ -125,17 +126,17 @@ static bool saveRGBA32AsPNG(
 
 	// libpng erwartet pro Zeile zusammenhängende RGBA-Bytes.
 	std::vector<std::uint8_t> row(
-		static_cast<std::size_t>(width) * 4);
+		static_cast<size_t>(width) * 4);
 
 	for (std::uint32_t y = 0; y < height; ++y)
 	{
 		for (std::uint32_t x = 0; x < width; ++x)
 		{
 			const std::uint32_t argb =
-				pixels[static_cast<std::size_t>(y) * width + x];
+				pixels[static_cast<size_t>(y) * width + x];
 
-			const std::size_t offset =
-				static_cast<std::size_t>(x) * 4;
+			const size_t offset =
+				static_cast<size_t>(x) * 4;
 
 			// Annahme: 0xAARRGGBB
 			row[offset + 0] = static_cast<std::uint8_t>(
@@ -185,9 +186,8 @@ const std::string PGSConverter::output_extension(void) const
 
 void PGSConverter::append_ocr(const PGSStream::Frame& frame)
 {
-	// const std::string text = m_ocr.read_text(frame.pixels, frame.width, frame.height);
-	const std::string text = "Test";
-	
+	const std::string text = m_ocr.read_text(frame.pixels, frame.width, frame.height);
+
 	if (text.empty())
 	{
 		const std::string filename = "unreadable." + m_language + "/" + timestamp(frame.time_show) + ".png";
@@ -205,7 +205,7 @@ void PGSConverter::append_ocr(const PGSStream::Frame& frame)
 		// passed++;
 		m_output_srt << m_line_index << std::endl;
 		m_output_srt << timestamp(frame.time_show) << " --> " << timestamp(frame.time_hide) << std::endl;
-		m_output_srt << text << std::endl;
+		m_output_srt << text << std::endl << std::endl;
 		m_line_index++;
 	}
 }

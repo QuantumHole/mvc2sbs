@@ -27,8 +27,8 @@ static std::vector<uint8_t> rgbaToGreyscale(const std::vector<uint32_t>& pixels)
 }
 
 OCR::OCR(const std::string& language) :
-    m_ocr(),
-    m_ocr_available(false)
+	m_ocr(),
+	m_ocr_available(false)
 {
 	if (language.empty())
 	{
@@ -61,16 +61,16 @@ OCR::~OCR(void)
 }
 
 std::string OCR::read_text(
-    const std::vector<uint32_t>& pixels,
-    const size_t width,
-    const size_t height)
+	const std::vector<uint32_t>& pixels,
+	const size_t width,
+	const size_t height)
 {
 	const size_t pixelCount = width * height;
 
 	if ((width == 0) ||
-		(height == 0) ||
-		(pixels.size() != pixelCount) ||
-		!m_ocr_available)
+	    (height == 0) ||
+	    (pixels.size() != pixelCount) ||
+	    !m_ocr_available)
 	{
 		return "";
 	}
@@ -92,28 +92,17 @@ std::string OCR::read_text(
 		static_cast<int>(width));   // Bytes pro Zeile
 
 	// currently leads to memory leak or use-after-free when the first thread exits
-	char* recognizedText = m_ocr.GetUTF8Text();
+	const char* recognizedText = m_ocr.GetUTF8Text();
+	// const char* recognizedText = "Test";
 
 	if (!recognizedText)
 	{
-	// 	// text was not recognized
-	// // 	const std::string filename = "unreadable." + srt_language + "/" + timestamp(frame.time_show) + ".png";
-	// // 	saveRGBA32AsPNG(filename, frame.pixels, frame.width, frame.height);
-	// 	return;
+		return "";
 	}
 
-	// std::string text;
-	// text.assign(recognizedText);
-	// delete[] recognizedText;
+	std::string text;
+	text.assign(recognizedText);
+	delete[] recognizedText;
 
-	// if (text.empty())
-	// {
-	// 	// text was not recognized
-	// // 	const std::string filename = "unreadable." + srt_language + "/" + timestamp(frame.time_show) + ".png";
-	// // 	saveRGBA32AsPNG(filename, frame.pixels, frame.width, frame.height);
-	// 	return;
-	// }
-
-    return "";
+	return text;
 }
-

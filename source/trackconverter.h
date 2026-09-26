@@ -46,11 +46,8 @@ class TrackConverter
 		std::ofstream m_output;
 		std::vector<BlockData> m_data_buffer;
 		std::mutex m_mutex;
-		std::thread* m_thread;
+		std::thread m_thread;
 		bool m_keep_running;
-
-		TrackConverter(const TrackConverter&);
-		TrackConverter& operator=(const TrackConverter&);
 
 		std::string output_file_name(void) const;
 		void run_loop(void);

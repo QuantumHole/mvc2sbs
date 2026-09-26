@@ -146,7 +146,7 @@ static std::vector<uint8_t> decodeRle(const std::vector<uint8_t>& rle, const siz
 	return data;
 }
 
-void PGSStream::push(const uint8_t* data, size_t size)
+void PGSStream::push(const uint8_t* data, const size_t size)
 {
 	input_.insert(input_.end(), data, data + size);
 	parse();
@@ -185,8 +185,8 @@ void PGSStream::reset(void)
 }
 
 void PGSStream::processPcs(
-	uint32_t pts,
-	uint32_t dts,
+	const uint32_t pts,
+	const uint32_t dts,
 	const std::vector<uint8_t>& p)
 {
 	// Minimaler PCS-Header:
@@ -223,7 +223,7 @@ void PGSStream::processPcs(
 	// Bei gesetztem Cropped-Flag folgen weitere 8 Bytes.
 	size_t pos = 11;
 
-	for (uint8_t i = 0; i < objectCount; ++i)
+	for (uint8_t i = 0; i < objectCount; i++)
 	{
 		require(pos + 8 <= p.size(), "PCS-Objekt ist abgeschnitten");
 
@@ -501,9 +501,9 @@ void PGSStream::decodeTextFrames(void)
 }
 
 void PGSStream::processSegment(
-	uint8_t type,
-	uint32_t pts,
-	uint32_t dts,
+	const uint8_t type,
+	const uint32_t pts,
+	const uint32_t dts,
 	const std::vector<uint8_t>& p)
 {
 	switch (type)
@@ -570,10 +570,10 @@ void PGSStream::parse(void)
 			continue;
 		}
 
-		uint32_t pts = readBE32(input_, 2);
-		uint32_t dts = readBE32(input_, 6);
-		uint8_t type = input_[10];
-		uint16_t length = readBE16(input_, 11);
+		const uint32_t pts = readBE32(input_, 2);
+		const uint32_t dts = readBE32(input_, 6);
+		const uint8_t type = input_[10];
+		const uint16_t length = readBE16(input_, 11);
 
 		if (input_.size() < 13u + length)
 		{

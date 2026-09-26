@@ -1,0 +1,3 @@
+[submodule "edge264-mvc"]
+	path = edge264-mvc
+	url = https://github.com/jens-duttke/edge264-mvc.git

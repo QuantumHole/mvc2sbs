@@ -11,7 +11,7 @@ TrackConverter::TrackConverter(const std::string& input_file_name, const size_t 
 	m_output(),
 	m_data_buffer(),
 	m_mutex(),
-	m_thread(nullptr),
+	m_thread(),
 	m_keep_running(true)
 {
 }
@@ -20,10 +20,9 @@ TrackConverter::~TrackConverter(void)
 {
 	m_keep_running = false;
 
-	if (m_thread)
+	if (m_thread.joinable())
 	{
-		m_thread->join();
-		delete m_thread;
+		m_thread.join();
 	}
 	m_output.flush();
 	m_output.close();
@@ -102,9 +101,9 @@ void TrackConverter::add_data(const std::vector<uint8_t>& data, const uint64_t t
 	m_data_buffer.emplace_back(timestamp, data);
 	m_mutex.unlock();
 
-	if (m_thread == nullptr)
+	if (!m_thread.joinable())
 	{
-		m_thread = new std::thread(runner, this);
+		m_thread = std::thread(runner, this);
 	}
 }
 
@@ -115,9 +114,9 @@ void TrackConverter::add_data(const uint8_t* data, const size_t size, const uint
 	m_data_buffer.emplace_back(timestamp, data, size);
 	m_mutex.unlock();
 
-	if (m_thread == nullptr)
+	if (!m_thread.joinable())
 	{
-		m_thread = new std::thread(runner, this);
+		m_thread = std::thread(runner, this);
 	}
 }
 

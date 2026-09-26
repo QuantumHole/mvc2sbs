@@ -27,7 +27,7 @@ class PGSStream {
 		   Fügt einen beliebigen Datenblock hinzu.
 		   Der Block darf mitten in einem PGS-Segment enden.
 		 */
-		void push(const uint8_t* data, std::size_t size);
+		void push(const uint8_t* data, const size_t size);
 		void push(const std::vector<uint8_t>& data);
 		bool hasNextFrame(void) const;
 		Frame getNextFrame(void);
@@ -93,13 +93,13 @@ class PGSStream {
 
 		void parse(void);
 		void processSegment(
-			uint8_t type,
-			uint32_t pts,
-			uint32_t dts,
+			const uint8_t type,
+			const uint32_t pts,
+			const uint32_t dts,
 			const std::vector<uint8_t>& p);
 		void processPcs(
-			uint32_t pts,
-			uint32_t dts,
+			const uint32_t pts,
+			const uint32_t dts,
 			const std::vector<uint8_t>& p);
 		void processPds(const std::vector<uint8_t>& p);
 		void processOds(const std::vector<uint8_t>& p);
