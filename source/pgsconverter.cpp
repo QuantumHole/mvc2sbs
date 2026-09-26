@@ -2,15 +2,180 @@
 
 #include <iostream>
 #include <fstream>
+#include <iomanip>
+#include <filesystem>
+#include <png.h>
+
+static std::vector<uint8_t> writeUint32BE(const uint32_t value)
+{
+	std::vector<uint8_t> data = 
+	{
+		static_cast<uint8_t>((value >> 24) & 0xff),
+		static_cast<uint8_t>((value >> 16) & 0xff),
+		static_cast<uint8_t>((value >> 8) & 0xff),
+		static_cast<uint8_t>(value & 0xff)
+	};
+	return data;
+}
+
+static std::string timestamp(const double seconds)
+{
+	const uint64_t totalMs =
+		static_cast<uint64_t>(seconds * 1000.0 + 0.5);
+
+	const uint64_t hours = totalMs / 3600000;
+	const uint64_t minutes = (totalMs / 60000) % 60;
+	const uint64_t secs = (totalMs / 1000) % 60;
+	const uint64_t millis = totalMs % 1000;
+
+	std::ostringstream result;
+
+	result << std::setfill('0')
+	       << std::setw(2) << hours << ":"
+	       << std::setw(2) << minutes << ":"
+	       << std::setw(2) << secs << "."
+	       << std::setw(3) << millis;
+
+	return result.str();
+}
+
+static bool saveRGBA32AsPNG(
+	const std::string& filename,
+	const std::vector<std::uint32_t>& pixels,
+	const size_t width,
+	const size_t height)
+{
+	if ((width == 0) || (height == 0))
+	{
+		return false;
+	}
+
+	const std::size_t expectedSize = static_cast<std::size_t>(width) * height;
+
+	if (pixels.size() != expectedSize)
+	{
+		return false;
+	}
+
+	// Ausgabeverzeichnis ermitteln und bei Bedarf anlegen.
+	try
+	{
+		const std::filesystem::path outputPath(filename);
+		const std::filesystem::path outputDirectory = outputPath.parent_path();
+
+		if (!outputDirectory.empty())
+		{
+			std::filesystem::create_directories(outputDirectory);
+		}
+	}
+	catch (const std::filesystem::filesystem_error&)
+	{
+		return false;
+	}
+
+	FILE* file = std::fopen(filename.c_str(), "wb");
+
+	if (!file)
+	{
+		return false;
+	}
+
+	png_structp png = png_create_write_struct(
+		PNG_LIBPNG_VER_STRING,
+		nullptr,
+		nullptr,
+		nullptr);
+
+	if (!png)
+	{
+		std::fclose(file);
+		return false;
+	}
+
+	png_infop info = png_create_info_struct(png);
+
+	if (!info)
+	{
+		png_destroy_write_struct(&png, nullptr);
+		std::fclose(file);
+		return false;
+	}
+
+	if (setjmp(png_jmpbuf(png)))
+	{
+		png_destroy_write_struct(&png, &info);
+		std::fclose(file);
+		return false;
+	}
+
+	png_init_io(png, file);
+
+	png_set_IHDR(
+		png,
+		info,
+		static_cast<uint32_t>(width),
+		static_cast<uint32_t>(height),
+		8,                       // Bits pro Kanal
+		PNG_COLOR_TYPE_RGBA,
+		PNG_INTERLACE_NONE,
+		PNG_COMPRESSION_TYPE_DEFAULT,
+		PNG_FILTER_TYPE_DEFAULT);
+
+	png_write_info(png, info);
+
+	// libpng erwartet pro Zeile zusammenhängende RGBA-Bytes.
+	std::vector<std::uint8_t> row(
+		static_cast<std::size_t>(width) * 4);
+
+	for (std::uint32_t y = 0; y < height; ++y)
+	{
+		for (std::uint32_t x = 0; x < width; ++x)
+		{
+			const std::uint32_t argb =
+				pixels[static_cast<std::size_t>(y) * width + x];
+
+			const std::size_t offset =
+				static_cast<std::size_t>(x) * 4;
+
+			// Annahme: 0xAARRGGBB
+			row[offset + 0] = static_cast<std::uint8_t>(
+				(argb >> 16) & 0xff); // R
+
+			row[offset + 1] = static_cast<std::uint8_t>(
+				(argb >> 8) & 0xff);  // G
+
+			row[offset + 2] = static_cast<std::uint8_t>(
+				argb & 0xff);         // B
+
+			row[offset + 3] = static_cast<std::uint8_t>(
+				(argb >> 24) & 0xff); // A
+		}
+
+		png_write_row(png, row.data());
+	}
+
+	png_write_end(png, nullptr);
+	png_destroy_write_struct(&png, &info);
+	std::fclose(file);
+
+	return true;
+}
 
 PGSConverter::PGSConverter(const std::string& input_file_name, const size_t track_number, const std::string& track_id, const std::string& language) :
 	TrackConverter(input_file_name, track_number, track_id),
-	m_language(language)
+	m_save_images(false),
+	m_language(language),
+	m_pgs_stream(),
+	m_output_srt(input_file_name + "." + std::to_string(track_number) + "." + language + ".srt"),
+	m_ocr(language),
+	m_line_index(0)
 {
 }
 
 PGSConverter::~PGSConverter(void)
 {
+	m_output_srt.flush();
+	m_output_srt.close();
 }
 
 const std::string PGSConverter::output_extension(void) const
@@ -18,17 +183,31 @@ const std::string PGSConverter::output_extension(void) const
 	return "." + m_language + ".sup";
 }
 
-void PGSConverter::writeUint32BE(const uint32_t value)
+void PGSConverter::append_ocr(const PGSStream::Frame& frame)
 {
-	const unsigned char buffer[4] =
+	// const std::string text = m_ocr.read_text(frame.pixels, frame.width, frame.height);
+	const std::string text = "Test";
+	
+	if (text.empty())
 	{
-		static_cast<unsigned char>((value >> 24) & 0xff),
-		static_cast<unsigned char>((value >> 16) & 0xff),
-		static_cast<unsigned char>((value >> 8) & 0xff),
-		static_cast<unsigned char>(value & 0xff)
-	};
+		const std::string filename = "unreadable." + m_language + "/" + timestamp(frame.time_show) + ".png";
+		saveRGBA32AsPNG(filename, frame.pixels, frame.width, frame.height);
+	}
 
-	write(buffer, sizeof(buffer));
+	if (m_save_images)
+	{
+		const std::string filename = "subtitles." + m_language + "/" + timestamp(frame.time_show) + ".png";
+		saveRGBA32AsPNG(filename, frame.pixels, frame.width, frame.height);
+	}
+
+	if (!text.empty())
+	{
+		// passed++;
+		m_output_srt << m_line_index << std::endl;
+		m_output_srt << timestamp(frame.time_show) << " --> " << timestamp(frame.time_hide) << std::endl;
+		m_output_srt << text << std::endl;
+		m_line_index++;
+	}
 }
 
 size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const uint64_t timestamp)
@@ -39,6 +218,7 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const uint64
 		return 0;
 	}
 
+	std::vector<uint8_t> pgsdata;
 	const size_t size = data.size();
 	size_t offset = 0;
 
@@ -73,21 +253,34 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const uint64
 			return offset;
 		}
 
-		const unsigned char magic[2] =
+		std::vector<uint8_t> value =
 		{
 			0x50,
 			0x47
 		};
 
-		write(magic, sizeof(magic));
+		pgsdata.insert(pgsdata.end(), value.begin(), value.end());
 
 		// PTS are sampled with 90kHz
 		const uint32_t pts = static_cast<uint32_t>(timestamp * 90000 / 1000000000);
-		writeUint32BE(pts);
-		writeUint32BE(0);
-		write(&data[offset], segmentSize);
+		value = writeUint32BE(pts);
+		pgsdata.insert(pgsdata.end(), value.begin(), value.end());
+		value = writeUint32BE(0);
+		pgsdata.insert(pgsdata.end(), value.begin(), value.end());
+		pgsdata.insert(
+			pgsdata.end(),
+			data.begin() + static_cast<ptrdiff_t>(offset),
+			data.begin() + static_cast<ptrdiff_t>(offset) + static_cast<ptrdiff_t>(segmentSize));
 
 		offset += segmentSize;
+	}
+	write(pgsdata.data(), pgsdata.size());
+
+	m_pgs_stream.push(pgsdata);
+	while (m_pgs_stream.hasNextFrame())
+	{
+		PGSStream::Frame frame = m_pgs_stream.getNextFrame();
+		append_ocr(frame);
 	}
 
 	return offset;

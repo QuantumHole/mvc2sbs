@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 PROJECT_ROOT := .
-DEPENDENCIES = "libmatroska libebml"
+DEPENDENCIES = "libmatroska libebml tesseract libpng"
 
 include common/cplusplus.mk
 include common/license.mk
@@ -17,6 +17,8 @@ OBJECTS := \
 	$(BUILD_DIR)/mkvstreamer.o \
 	$(BUILD_DIR)/trackconverter.o \
 	$(BUILD_DIR)/pgsconverter.o \
+	$(BUILD_DIR)/pgsstream.o \
+	$(BUILD_DIR)/ocr.o \
 
 .PHONY: all
 

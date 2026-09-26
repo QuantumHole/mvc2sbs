@@ -86,6 +86,7 @@ void TrackConverter::run_loop(void)
 		m_data_buffer.erase(m_data_buffer.begin(), m_data_buffer.begin() + 1);
 		m_mutex.unlock();
 	}
+	std::cout << "thread finished for track " << m_track_number << std::endl;
 }
 
 void TrackConverter::runner(TrackConverter* instance)
