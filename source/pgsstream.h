@@ -43,7 +43,7 @@ class PGSStream {
 		bool hasNextFrame(void) const;
 		Frame getNextFrame(void);
 		void reset(void);
-		std::vector<uint8_t> saveFrames(const std::vector<Frame>& frames) const;
+		std::vector<uint8_t> saveFrame(const Frame& frame);
 
 	private:
 		typedef enum : uint8_t
@@ -89,13 +89,14 @@ class PGSStream {
 			uint16_t cropH = 0;
 		};
 
-		std::vector<uint8_t> input_ = {};
+		std::vector<uint8_t> m_input_data = {};
 		std::deque<Frame> m_frame_buffer = {};
 		std::deque<Frame> m_input_frames = {};
 
 		std::map<uint8_t, Palette> m_palettes = {};
 		std::map<uint16_t, Object> m_objects = {};
 		std::vector<CompositionObject> m_compositions = {};
+		uint16_t m_composition_id = 0;
 
 		void parse(void);
 		void processSegment(
@@ -151,6 +152,4 @@ class PGSStream {
 			const uint32_t pts,
 			const uint16_t compositionNumber,
 			const bool epochStart) const;
-
-
-	};
+};

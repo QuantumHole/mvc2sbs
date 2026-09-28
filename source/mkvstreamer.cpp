@@ -158,6 +158,8 @@ MKVStreamer::MKVStreamer(const std::string& filename) :
 
 MKVStreamer::~MKVStreamer(void)
 {
+	// threads need a little time to settle before being destroyed.
+	std::this_thread::sleep_for(std::chrono::seconds(1));
 	for (std::map<uint64_t, TrackConverter*>::iterator it = m_converters.begin(); it != m_converters.end(); ++it)
 	{
 		delete it->second;

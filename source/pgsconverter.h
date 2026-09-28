@@ -15,7 +15,6 @@ class PGSConverter : public TrackConverter
 		std::ofstream m_output_srt;
 		OCR m_ocr;
 		size_t m_line_index;
-		std::vector<PGSStream::Frame> m_output_frames;
 
 		void append_ocr(const PGSStream::Frame& frame);
 

@@ -162,15 +162,18 @@ static bool saveRGBA32AsPNG(
 	return true;
 }
 
-PGSConverter::PGSConverter(const std::string& input_file_name, const size_t track_number, const std::string& track_id, const std::string& language) :
+PGSConverter::PGSConverter(
+	const std::string& input_file_name,
+	const size_t track_number,
+	const std::string& track_id,
+	const std::string& language) :
 	TrackConverter(input_file_name, track_number, track_id),
-	m_save_images(true),
+	m_save_images(false),
 	m_language(language),
 	m_pgs_stream(),
 	m_output_srt(input_file_name + "." + std::to_string(track_number) + "." + language + ".srt"),
 	m_ocr(language),
-	m_line_index(0),
-	m_output_frames()
+	m_line_index(0)
 {
 }
 
@@ -178,11 +181,6 @@ PGSConverter::~PGSConverter(void)
 {
 	m_output_srt.flush();
 	m_output_srt.close();
-	if (m_output_frames.size())
-	{
-		const std::vector<uint8_t> payload = m_pgs_stream.saveFrames(m_output_frames);
-		write(payload.data(), payload.size());
-	}
 }
 
 const std::string PGSConverter::output_extension(void) const
@@ -280,7 +278,6 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const uint64
 
 		offset += segmentSize;
 	}
-	// write(pgsdata.data(), pgsdata.size());
 
 	m_pgs_stream.push(pgsdata);
 	while (m_pgs_stream.hasNextFrame())
@@ -288,7 +285,8 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const uint64
 		PGSStream::Frame frame = m_pgs_stream.getNextFrame();
 		frame.screen.x *= 2;   // double screen size for SBS output
 		append_ocr(frame);
-		m_output_frames.push_back(frame);
+		const std::vector<uint8_t> payload = m_pgs_stream.saveFrame(frame);
+		write(payload.data(), payload.size());
 	}
 
 	return offset;
