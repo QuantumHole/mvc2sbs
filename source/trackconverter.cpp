@@ -4,10 +4,9 @@
 #include <iostream>
 #include <sstream>
 
-TrackConverter::TrackConverter(const std::string& input_file_name, const size_t track_number, const std::string& track_id) :
+TrackConverter::TrackConverter(const std::string& input_file_name, const TrackInfo& track_info) :
+	m_track_info(track_info),
 	m_input_file_name(input_file_name),
-	m_track_number(track_number),
-	m_track_id(track_id),
 	m_output(),
 	m_data_buffer(),
 	m_mutex(),
@@ -28,9 +27,9 @@ TrackConverter::~TrackConverter(void)
 	m_output.close();
 }
 
-const std::string& TrackConverter::track_id(void) const
+const TrackConverter::TrackInfo& TrackConverter::track_info(void) const
 {
-	return m_track_id;
+	return m_track_info;
 }
 
 std::string TrackConverter::output_file_name(void) const
@@ -44,7 +43,7 @@ std::string TrackConverter::output_file_name(void) const
 	return directory +
 	       m_input_file_name.substr(start, ext - start) +
 	       "_track" +
-	       std::to_string(m_track_number) +
+	       std::to_string(m_track_info.trackNumber) +
 	       output_extension();
 }
 
@@ -54,7 +53,7 @@ void TrackConverter::run_loop(void)
 
 	const std::string name = output_file_name();
 
-	s << "Track " << m_track_number << " -> " << name << std::endl;
+	s << "Track " << m_track_info.trackNumber << " -> " << name << std::endl;
 	std::cout << s.str();
 	s.str("");
 
@@ -76,16 +75,16 @@ void TrackConverter::run_loop(void)
 			continue;
 		}
 		const BlockData& block = *m_data_buffer.begin();
-		const size_t processed = process_data(block.data, block.timestamp);
+		const size_t processed = process_data(block.data, block.info);
 
 		if (processed != block.data.size())
 		{
-			std::cout << "block at " << block.timestamp << "ns not completed" << std::endl;
+			std::cout << "block at " << block.info.pts << "ns not completed" << std::endl;
 		}
 		m_data_buffer.erase(m_data_buffer.begin(), m_data_buffer.begin() + 1);
 		m_mutex.unlock();
 	}
-	std::cout << "thread finished for track " << m_track_number << std::endl;
+	std::cout << "thread finished for track " << m_track_info.trackNumber << std::endl;
 }
 
 void TrackConverter::runner(TrackConverter* instance)
@@ -93,12 +92,12 @@ void TrackConverter::runner(TrackConverter* instance)
 	instance->run_loop();
 }
 
-void TrackConverter::add_data(const std::vector<uint8_t>& data, const uint64_t timestamp)
+void TrackConverter::add_data(const std::vector<uint8_t>& data, const FrameInfo& frameinfo)
 {
 	// const std::lock_guard<std::mutex> lock(m_mutex);
 	m_mutex.lock();
 	// m_data_buffer.insert(m_data_buffer.end(), data.begin(), data.end());
-	m_data_buffer.emplace_back(timestamp, data);
+	m_data_buffer.emplace_back(frameinfo, data);
 	m_mutex.unlock();
 
 	if (!m_thread.joinable())
@@ -107,11 +106,11 @@ void TrackConverter::add_data(const std::vector<uint8_t>& data, const uint64_t t
 	}
 }
 
-void TrackConverter::add_data(const uint8_t* data, const size_t size, const uint64_t timestamp)
+void TrackConverter::add_data(const uint8_t* data, const size_t size, const FrameInfo& frameinfo)
 {
 	// const std::lock_guard<std::mutex> lock(m_mutex);
 	m_mutex.lock();
-	m_data_buffer.emplace_back(timestamp, data, size);
+	m_data_buffer.emplace_back(frameinfo, data, size);
 	m_mutex.unlock();
 
 	if (!m_thread.joinable())

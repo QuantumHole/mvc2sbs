@@ -28,65 +28,41 @@ static bool isElement(const libebml::EbmlElement& element, const libebml::EbmlId
 	return element.Generic().ClassId() == id;
 }
 
-static bool getTrackNumber(
-	const libmatroska::KaxTrackEntry& trackEntry,
-	uint64_t& number)
+template<typename T>
+const T* FindElement(const libebml::EbmlMaster& master)
 {
-	const libebml::EbmlMaster* master = dynamic_cast<const libebml::EbmlMaster*>(&trackEntry);
-
-	if (master == nullptr)
-	{
-		return false;
-	}
-
-	for (const libebml::EbmlElement* child : *master)
-	{
-		if ((child == nullptr) ||
-		    !isElement(*child, EBML_ID(libmatroska::KaxTrackNumber)))
-		{
-			continue;
-		}
-
-		const libmatroska::KaxTrackNumber* value = dynamic_cast<const libmatroska::KaxTrackNumber*>(child);
-
-		if (value == nullptr)
-		{
-			return false;
-		}
-
-		number = value->GetValue();
-		return true;
-	}
-
-	return false;
+	return static_cast<const T*>(master.FindFirstElt(EBML_INFO(T)));
 }
 
-static std::string getCodecId(const libmatroska::KaxTrackEntry& trackEntry)
+static std::uint64_t GetTrackNumber(const libmatroska::KaxTrackEntry* track)
 {
-	const libebml::EbmlMaster* master = dynamic_cast<const libebml::EbmlMaster*>(&trackEntry);
+	if (!track)
+	{
+		return 0;
+	}
 
-	if (master == nullptr)
+	const auto* element = FindElement<libmatroska::KaxTrackNumber>(*track);
+
+	return element
+	    ? static_cast<std::uint64_t>(*element)
+	    : 0;
+}
+
+inline std::string GetCodecId(const libmatroska::KaxTrackEntry* track)
+{
+	if (!track)
 	{
 		return {};
 	}
 
-	for (const libebml::EbmlElement* child : *master)
+	const auto* element = FindElement<libmatroska::KaxCodecID>(*track);
+
+	if (!element)
 	{
-		if ((child == nullptr) ||
-		    !isElement(*child, EBML_ID(libmatroska::KaxCodecID)))
-		{
-			continue;
-		}
-
-		const libmatroska::KaxCodecID* value = dynamic_cast<const libmatroska::KaxCodecID*>(child);
-
-		if (value != nullptr)
-		{
-			return value->GetValue();
-		}
+		return {};
 	}
 
-	return {};
+	return static_cast<std::string>(*element);
 }
 
 static uint64_t readTimecodeScale(
@@ -132,6 +108,123 @@ static uint64_t readTimecodeScale(
 	return 1000000ULL;
 }
 
+static std::vector<std::uint8_t> GetCodecPrivate(const libmatroska::KaxTrackEntry* track)
+{
+	if (!track)
+	{
+		return {};
+	}
+
+	const auto* element = FindElement<libmatroska::KaxCodecPrivate>(*track);
+
+	if (!element)
+	{
+		return {};
+	}
+
+	const auto* buffer = element->GetBuffer();
+	const auto size = static_cast<std::size_t>(element->GetSize());
+
+	if (!buffer || (size == 0))
+	{
+		return {};
+	}
+
+	return {
+	    reinterpret_cast<const std::uint8_t*>(buffer),
+	    reinterpret_cast<const std::uint8_t*>(buffer) + size
+	};
+}
+
+static std::uint64_t GetVideoWidth(const libmatroska::KaxTrackEntry* track)
+{
+	if (!track)
+	{
+		return 0;
+	}
+
+	const auto* video = FindElement<libmatroska::KaxTrackVideo>(*track);
+
+	if (!video)
+	{
+		return 0;
+	}
+
+	const auto* width = FindElement<libmatroska::KaxVideoPixelWidth>(*video);
+
+	return width
+	    ? static_cast<std::uint64_t>(*width)
+	    : 0;
+}
+
+static std::uint64_t GetVideoHeight( const libmatroska::KaxTrackEntry* track)
+{
+	if (!track)
+	{
+		return 0;
+	}
+
+	const auto* video = FindElement<libmatroska::KaxTrackVideo>(*track);
+
+	if (!video)
+	{
+		return 0;
+	}
+
+	const auto* height = FindElement<libmatroska::KaxVideoPixelHeight>(*video);
+
+	return height
+	    ? static_cast<std::uint64_t>(*height)
+	    : 0;
+}
+
+static std::uint64_t GetCodecDelay(const libmatroska::KaxTrackEntry* track)
+{
+	if (!track)
+	{
+		return 0;
+	}
+
+	const auto* element = FindElement<libmatroska::KaxCodecDelay>(*track);
+
+	return element
+	    ? static_cast<std::uint64_t>(*element)
+	    : 0;
+}
+
+static std::uint64_t GetDefaultDuration(const libmatroska::KaxTrackEntry* track)
+{
+	if (!track)
+	{
+		return 0;
+	}
+
+	const auto* element = FindElement<libmatroska::KaxTrackDefaultDuration>(*track);
+
+	return element
+	    ? static_cast<std::uint64_t>(*element)
+	    : 0;
+}
+
+static std::string GetTrackLanguage(const libmatroska::KaxTrackEntry* track)
+{
+	if (!track)
+	{
+		return "und";
+	}
+
+	const auto* element = FindElement<libmatroska::KaxTrackLanguage>(*track);
+
+	if (!element)
+	{
+		return "und";
+	}
+
+	const std::string language = static_cast<std::string>(*element);
+
+	return language.empty() ? "und" : language;
+}
+
 static uint64_t getClusterEnd(
 	const libebml::EbmlElement& cluster,
 	const uint64_t dataStart,
@@ -148,6 +241,53 @@ static uint64_t getClusterEnd(
 	return end > static_cast<uint64_t>(fileSize)
 	    ? static_cast<uint64_t>(fileSize)
 	    : end;
+}
+
+static TrackConverter::TrackInfo GetH264TrackInfo(const libmatroska::KaxTrackEntry* track)
+{
+	TrackConverter::TrackInfo result;
+
+	if (!track)
+	{
+		return result;
+	}
+
+	result.trackNumber = GetTrackNumber(track);
+	result.codecId = GetCodecId(track);
+	result.codecPrivate = GetCodecPrivate(track);
+	result.width = GetVideoWidth(track);
+	result.height = GetVideoHeight(track);
+	result.codecDelay = GetCodecDelay(track);
+	result.defaultDuration = GetDefaultDuration(track);
+	// result.timestampScale = track->GlobalTimecodeScale();
+	result.language = GetTrackLanguage(track);
+
+	return result;
+}
+
+static uint64_t getFramePts(
+	const uint64_t blockPts,
+	const unsigned int frameNumber,
+	const TrackConverter::TrackInfo& trackInfo)
+{
+	if (frameNumber == 0)
+	{
+		return blockPts;
+	}
+
+	if (trackInfo.defaultDuration == 0)
+	{
+		/*
+		 * Ohne bekannte Dauer können wir den PTS
+		 * weiterer gelaceter Frames hier nicht
+		 * zuverlässig bestimmen.
+		 */
+		return blockPts;
+	}
+
+	return blockPts +
+	       static_cast<uint64_t>(frameNumber) *
+	       trackInfo.defaultDuration;
 }
 
 MKVStreamer::MKVStreamer(const std::string& filename) :
@@ -177,12 +317,14 @@ void MKVStreamer::readBlock(
 	block.ReadData(stream.I_O(), libebml::SCOPE_ALL_DATA);
 
 	const uint64_t trackNumber = block.TrackNum();
-	const std::map<uint64_t, TrackConverter*>::iterator outputIt = m_converters.find(trackNumber);
+	const std::map<uint64_t, TrackConverter*>::iterator convIt = m_converters.find(trackNumber);
 
-	if (outputIt == m_converters.end())
+	if (convIt == m_converters.end())
 	{
 		return;
 	}
+
+	TrackConverter& converter = *convIt->second;
 
 	/*
 	 * GetRelativeTimestamp() liefert den unskalierten
@@ -195,15 +337,30 @@ void MKVStreamer::readBlock(
 	{
 		return;
 	}
-	const uint64_t ns = static_cast<uint64_t>(absoluteTimecode) * timecodeScale;
+
+	const uint64_t blockPts = static_cast<uint64_t>(absoluteTimecode) * timecodeScale;
+
+	bool keyframe = false;
+
+	if (auto* simpleBlock = dynamic_cast<libmatroska::KaxSimpleBlock*>(&block))
+	{
+		keyframe = simpleBlock->IsKeyframe();
+	}
 
 	for (unsigned int frameNumber = 0; frameNumber < block.NumberFrames(); frameNumber++)
 	{
 		libmatroska::DataBuffer& data = block.GetBuffer(frameNumber);
-		m_converters[trackNumber]->add_data(data.Buffer(), data.Size(), ns);
+
+		TrackConverter::FrameInfo frameinfo;
+		frameinfo.index = frameNumber;
+		frameinfo.pts = getFramePts(blockPts, frameNumber, converter.track_info());
+		frameinfo.duration = converter.track_info().defaultDuration;
+		frameinfo.keyframe = keyframe;
+
+		converter.add_data(data.Buffer(), data.Size(), frameinfo);
 	}
 
-	const double seconds = static_cast<double>(ns) / 1e9;
+	const double seconds = static_cast<double>(blockPts) / 1e9;
 	std::cout << "queued timecode: " << seconds << "s.\r";
 }
 
@@ -494,25 +651,15 @@ void MKVStreamer::readTracks(libmatroska::KaxTracks& tracksElement, libebml::Ebm
 			continue;
 		}
 
-		uint64_t number = 0;
+		TrackConverter::TrackInfo info = GetH264TrackInfo(entry);
 
-		if (!getTrackNumber(*entry, number))
+		if (info.codecId == "S_HDMV/PGS")
 		{
-			continue;
+			m_converters[info.trackNumber] = new PGSConverter(m_input_file_name, info);
 		}
-
-		libmatroska::KaxTrackLanguage* track_lang = static_cast<libmatroska::KaxTrackLanguage*>(
-			entry->FindFirstElt(EBML_INFO(libmatroska::KaxTrackLanguage)));
-
-		const std::string language = (track_lang ? track_lang->GetValue() : "und");
-		const std::string codecId = getCodecId(*entry);
-		if (codecId == "S_HDMV/PGS")
+		else if (info.codecId == "V_MPEG4/ISO/AVC")
 		{
-			m_converters[number] = new PGSConverter(m_input_file_name, number, "S_HDMV/PGS", language);
-		}
-		else if (codecId == "V_MPEG4/ISO/AVC")
-		{
-			m_converters[number] = new H264Converter(m_input_file_name, number, "V_MPEG4/ISO/AVC", language);
+			m_converters[info.trackNumber] = new H264Converter(m_input_file_name, info);
 		}
 	}
 }

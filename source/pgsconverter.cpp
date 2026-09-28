@@ -162,17 +162,12 @@ static bool saveRGBA32AsPNG(
 	return true;
 }
 
-PGSConverter::PGSConverter(
-	const std::string& input_file_name,
-	const size_t track_number,
-	const std::string& track_id,
-	const std::string& language) :
-	TrackConverter(input_file_name, track_number, track_id),
+PGSConverter::PGSConverter(const std::string& input_file_name, const TrackInfo& info) :
+	TrackConverter(input_file_name, info),
 	m_save_images(false),
-	m_language(language),
 	m_pgs_stream(),
-	m_output_srt(input_file_name + "." + std::to_string(track_number) + "." + language + ".srt"),
-	m_ocr(language),
+	m_output_srt(input_file_name + "." + std::to_string(info.trackNumber) + "." + info.language + ".srt"),
+	m_ocr(info.language),
 	m_line_index(0)
 {
 }
@@ -185,7 +180,7 @@ PGSConverter::~PGSConverter(void)
 
 const std::string PGSConverter::output_extension(void) const
 {
-	return "." + m_language + ".sup";
+	return "." + m_track_info.language + ".sup";
 }
 
 void PGSConverter::append_ocr(const PGSStream::Frame& frame)
@@ -194,13 +189,13 @@ void PGSConverter::append_ocr(const PGSStream::Frame& frame)
 
 	if (text.empty())
 	{
-		const std::string filename = "unreadable." + m_language + "/" + timestamp(frame.time.s) + "-" + timestamp(frame.time.t) + ".png";
+		const std::string filename = "unreadable." + m_track_info.language + "/" + timestamp(frame.time.s) + "-" + timestamp(frame.time.t) + ".png";
 		saveRGBA32AsPNG(filename, frame.pixels, frame.size.x, frame.size.y);
 	}
 
 	if (m_save_images)
 	{
-		const std::string filename = "subtitles." + m_language + "/" + timestamp(frame.time.s) + "-" + timestamp(frame.time.t) + ".png";
+		const std::string filename = "subtitles." + m_track_info.language + "/" + timestamp(frame.time.s) + "-" + timestamp(frame.time.t) + ".png";
 		saveRGBA32AsPNG(filename, frame.pixels, frame.size.x, frame.size.y);
 	}
 
@@ -214,11 +209,11 @@ void PGSConverter::append_ocr(const PGSStream::Frame& frame)
 	}
 }
 
-size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const uint64_t timestamp)
+size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameInfo& info)
 {
 	if (data.empty())
 	{
-		std::cerr << "Leerer PGS-Frame in language " << m_language << std::endl;
+		std::cerr << "Leerer PGS-Frame in language " << m_track_info.language << std::endl;
 		return 0;
 	}
 
@@ -230,7 +225,7 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const uint64
 	{
 		if (size - offset < 3)
 		{
-			std::cerr << "    Ungültiges PGS-Segment" << std::endl;
+			std::cerr << "invalid PGS segment" << std::endl;
 			return offset;
 		}
 
@@ -257,16 +252,11 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const uint64
 			return offset;
 		}
 
-		std::vector<uint8_t> value =
-		{
-			0x50,
-			0x47
-		};
-
+		std::vector<uint8_t> value = { 0x50, 0x47 };     // "PG"
 		pgsdata.insert(pgsdata.end(), value.begin(), value.end());
 
 		// PTS are sampled with 90kHz
-		const uint32_t pts = static_cast<uint32_t>(timestamp * 90000 / 1000000000);
+		const uint32_t pts = static_cast<uint32_t>(info.pts * 90000 / 1000000000);
 		value = writeUint32BE(pts);
 		pgsdata.insert(pgsdata.end(), value.begin(), value.end());
 		value = writeUint32BE(0);
