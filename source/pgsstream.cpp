@@ -12,6 +12,11 @@
 #include <algorithm>
 #include <cstring>
 
+#include <array>
+#include <fstream>
+#include <limits>
+#include <unordered_map>
+
 static uint16_t readBE16(const std::vector<uint8_t>& data, const size_t offset)
 {
 	if (offset + 2 > data.size())
@@ -38,6 +43,27 @@ static uint32_t readBE32(const std::vector<uint8_t>& data, const size_t offset)
 	       static_cast<uint32_t>(data[offset + 3]);
 }
 
+static void putBE16(std::vector<uint8_t>& out, uint16_t v)
+{
+	out.push_back(static_cast<uint8_t>((v >> 8) & 0xff));
+	out.push_back(static_cast<uint8_t>(v & 0xff));
+}
+
+static void putBE24(std::vector<uint8_t>& out, uint32_t v)
+{
+	out.push_back(static_cast<uint8_t>((v >> 16) & 0xff));
+	out.push_back(static_cast<uint8_t>((v >> 8) & 0xff));
+	out.push_back(static_cast<uint8_t>(v & 0xff));
+}
+
+static void putBE32(std::vector<uint8_t>& out, uint32_t v)
+{
+	out.push_back(static_cast<uint8_t>((v >> 24) & 0xff));
+	out.push_back(static_cast<uint8_t>((v >> 16) & 0xff));
+	out.push_back(static_cast<uint8_t>((v >> 8) & 0xff));
+	out.push_back(static_cast<uint8_t>(v & 0xff));
+}
+
 static void require(const bool condition, const std::string& message)
 {
 	if (!condition)
@@ -46,6 +72,22 @@ static void require(const bool condition, const std::string& message)
 	}
 }
 
+static uint32_t toPts(const double seconds)
+{
+	if (seconds <= 0.0)
+		return 0;
+
+	const double value = seconds * 90000.0;
+
+	if (value >= static_cast<double>(std::numeric_limits<uint32_t>::max()))
+	{
+		return std::numeric_limits<uint32_t>::max();
+	}
+
+	return static_cast<uint32_t>(value + 0.5);
+}
+
+/** wandelt einen Yuv Wert in 32bit RGBA im Format 0xAARRGGBB um. */
 static uint32_t yuvToRgba(
 	const uint8_t y,
 	const uint8_t cr,
@@ -67,6 +109,29 @@ static uint32_t yuvToRgba(
 	       (static_cast<uint32_t>(g) << 8)  |
 	       static_cast<uint32_t>(b);
 }
+
+// ARGB -> YCbCrA gemäß üblicher BT.601-Konvertierung.
+static uint32_t rgbaToYuvA(uint32_t rgba)
+{
+	const double r = static_cast<uint8_t>((rgba >> 16) & 0xff);
+	const double g = static_cast<uint8_t>((rgba >> 8) & 0xff);
+	const double b = static_cast<uint8_t>(rgba & 0xff);
+
+	const double y  =  0.257 * r + 0.504 * g + 0.098 * b + 16.0;
+	const double cb = -0.148 * r - 0.291 * g + 0.439 * b + 128.0;
+	const double cr =  0.439 * r - 0.368 * g - 0.071 * b + 128.0;
+
+	const uint8_t alpha = static_cast<uint8_t>((rgba >> 24) & 0xff);
+	const uint8_t y8  = static_cast<uint8_t>(std::clamp( y, 0.0, 255.0) + 0.5);
+	const uint8_t cr8 = static_cast<uint8_t>(std::clamp(cr, 0.0, 255.0) + 0.5);
+	const uint8_t cb8 = static_cast<uint8_t>(std::clamp(cb, 0.0, 255.0) + 0.5);
+
+	return (static_cast<uint32_t>( y8) << 24) |
+	       (static_cast<uint32_t>(cr8) << 16) |
+	       (static_cast<uint32_t>(cb8) << 8)  |
+	       static_cast<uint32_t>(alpha);
+}
+
 
 static std::vector<uint8_t> decodeRle(const std::vector<uint8_t>& rle, const size_t frame_size)
 {
@@ -146,6 +211,114 @@ static std::vector<uint8_t> decodeRle(const std::vector<uint8_t>& rle, const siz
 	return data;
 }
 
+/*
+	PGS-RLE:
+
+	- Nicht-null Byte: direktes Farbindex-Byte
+	- 00 00: Zeilenende
+	- 00 80..8f xx color: Wiederholung
+		Länge = ((byte2 & 0x0f) << 8) | byte3
+*/
+static std::vector<uint8_t> encodeRle(
+    const size_t width,
+    const size_t height,
+    const std::vector<uint8_t>& indexed)
+{
+    if (width == 0 || height == 0)
+        throw std::runtime_error("empty frame");
+
+    if (indexed.size() != width * height)
+        throw std::runtime_error("pixel data size mismatch");
+
+    std::vector<uint8_t> rle;
+
+    for (size_t y = 0; y < height; ++y)
+    {
+        size_t x = 0;
+
+        while (x < width)
+        {
+            const uint8_t color = indexed[y * width + x];
+
+            size_t run = 1;
+            while (x + run < width &&
+                   indexed[y * width + x + run] == color)
+            {
+                ++run;
+            }
+
+            size_t remaining = run;
+
+            while (remaining > 0)
+            {
+                const size_t part = std::min<size_t>(remaining, 0x3fff);
+
+                if (color != 0 && part < 3)
+                {
+                    // Einzelne Pixel bzw. 2er-Läufe können direkt
+                    // als Farbindex codiert werden.
+                    for (size_t i = 0; i < part; ++i)
+                        rle.push_back(color);
+                }
+                else if (color == 0)
+                {
+                    if (part <= 0x3f)
+                    {
+                        // kurze transparente Folge
+                        rle.push_back(0x00);
+                        rle.push_back(static_cast<uint8_t>(part));
+                    }
+                    else
+                    {
+                        // lange transparente Folge
+                        rle.push_back(0x00);
+                        rle.push_back(
+                            static_cast<uint8_t>(0x40 | ((part >> 8) & 0x3f)));
+                        rle.push_back(
+                            static_cast<uint8_t>(part & 0xff));
+                    }
+                }
+                else
+                {
+                    if (part <= 0x3f)
+                    {
+                        // kurze farbige Folge
+                        rle.push_back(0x00);
+                        rle.push_back(
+                            static_cast<uint8_t>(0x80 | part));
+                        rle.push_back(color);
+                    }
+                    else
+                    {
+                        // lange farbige Folge
+                        rle.push_back(0x00);
+                        rle.push_back(
+                            static_cast<uint8_t>(
+                                0xc0 | ((part >> 8) & 0x3f)));
+                        rle.push_back(
+                            static_cast<uint8_t>(part & 0xff));
+                        rle.push_back(color);
+                    }
+                }
+
+                remaining -= part;
+            }
+
+            x += run;
+        }
+
+        // End of line
+        rle.push_back(0x00);
+        rle.push_back(0x00);
+    }
+
+    // Wichtig: Das ist "end of object", nicht END des Display Sets.
+    rle.push_back(0x00);
+    rle.push_back(0x01);
+
+    return rle;
+}
+
 void PGSStream::push(const uint8_t* data, const size_t size)
 {
 	input_.insert(input_.end(), data, data + size);
@@ -159,18 +332,18 @@ void PGSStream::push(const std::vector<uint8_t>& data)
 
 bool PGSStream::hasNextFrame(void) const
 {
-	return !frames_.empty();
+	return !m_input_frames.empty();
 }
 
 PGSStream::Frame PGSStream::getNextFrame(void)
 {
-	if (frames_.empty())
+	if (m_input_frames.empty())
 	{
 		throw std::runtime_error("Kein vollständiger PGS-Frame verfügbar");
 	}
 
-	Frame result = std::move(frames_.front());
-	frames_.pop_front();
+	Frame result = std::move(m_input_frames.front());
+	m_input_frames.pop_front();
 	return result;
 }
 
@@ -178,110 +351,113 @@ void PGSStream::reset(void)
 {
 	input_.clear();
 	m_frame_buffer.clear();
-	frames_.clear();
-	palettes_.clear();
-	objects_.clear();
-	current_ = DisplaySet{};
+	m_input_frames.clear();
+	m_palettes.clear();
+	m_objects.clear();
 }
 
-void PGSStream::processPcs(
+/** Read presentation composition segement. 
+ * Translate defined objects into frames.
+ * Frame hide time is set, when the next empty composition object is received.
+ */
+void PGSStream::readPCS(
 	const uint32_t pts,
-	const uint32_t dts,
 	const std::vector<uint8_t>& p)
 {
-	// Minimaler PCS-Header:
+	// Minimal PCS-Header:
 	// width, height, frame_rate, composition_number,
 	// composition_state, palette_update_flag, palette_id,
 	// number_of_composition_objects
-	require(p.size() >= 11, "PCS-Segment ist zu kurz");
-
-	// Ein neues PCS beendet kein Display Set automatisch.
-	// Es startet lediglich die Beschreibung eines neuen Sets.
-	current_ = DisplaySet{};
-	current_.active = true;
-	current_.pts90k = pts;
-	current_.dts90k = dts;
-	current_.width = readBE16(p, 0);
-	current_.height = readBE16(p, 2);
-	current_.paletteId = p[9];
+	require(p.size() >= 11, "PCS too short");
 
 	const uint8_t objectCount = p[10];
-
 	if (objectCount == 0)
 	{
-		// set hide timestamps for frames currently in frame buffer
+		// set hide timestamps for all frames currently in frame buffer
 		while (!m_frame_buffer.empty())
 		{
 			Frame result = std::move(m_frame_buffer.front());
 			m_frame_buffer.pop_front();
-			result.time_hide = static_cast<double>(current_.pts90k) / 90000.0;
-			frames_.push_back(result);
+			result.time.t = static_cast<double>(pts) / 90000.0;
+			m_input_frames.push_back(result);
 		}
 	}
 
-	// Jedes Composition Object ist 8 Bytes lang.
-	// Bei gesetztem Cropped-Flag folgen weitere 8 Bytes.
-	size_t pos = 11;
+	// A new PCS does not automatically end any previous Display Set.
+	// PCS only describe sets of displayed elements.
+	const uint16_t ds_width = readBE16(p, 0);
+	const uint16_t ds_height = readBE16(p, 2);
+	const uint8_t ds_paletteId = p[9];
 
+	require(ds_width != 0 && ds_height != 0, "PCS contains invalid frame size");
+
+	// Every Composition Object is 8 bytes long,
+	// followed by 8 additional bytes with set Cropped flag.
+	size_t pos = 11;
 	for (uint8_t i = 0; i < objectCount; i++)
 	{
-		require(pos + 8 <= p.size(), "PCS-Objekt ist abgeschnitten");
+		require(pos + 8 <= p.size(), "PCS objekt is incomplete");
 
-		CompositionObject object;
-		object.objectId = readBE16(p, pos + 0);
-		object.windowId = p[pos + 2];
-		object.cropped = p[pos + 3];
-		object.x = readBE16(p, pos + 4);
-		object.y = readBE16(p, pos + 6);
+		CompositionObject co;
+		co.pts = pts;
+		co.width = ds_width;
+		co.height = ds_height;
+		co.paletteId = ds_paletteId;
+		co.objectId = readBE16(p, pos + 0);
+		co.windowId = p[pos + 2];
+		co.cropped = p[pos + 3];
+		co.x = readBE16(p, pos + 4);
+		co.y = readBE16(p, pos + 6);
 
 		pos += 8;
 
-		if (object.cropped & 0x40)
+		if (co.cropped & 0x40)
 		{
-			require(pos + 8 <= p.size(),
-			        "PCS-Croppingdaten sind abgeschnitten");
+			require(pos + 8 <= p.size(), "PCS cropping data is incomplete");
 
-			object.cropX = readBE16(p, pos + 0);
-			object.cropY = readBE16(p, pos + 2);
-			object.cropW = readBE16(p, pos + 4);
-			object.cropH = readBE16(p, pos + 6);
+			co.cropX = readBE16(p, pos + 0);
+			co.cropY = readBE16(p, pos + 2);
+			co.cropW = readBE16(p, pos + 4);
+			co.cropH = readBE16(p, pos + 6);
 
 			pos += 8;
 		}
 
-		current_.compositionObjects.push_back(object);
+		m_compositions.push_back(co);
 	}
 }
 
-void PGSStream::processPds(const std::vector<uint8_t>& p)
+/** read palette definition segment. */
+void PGSStream::readPDS(const std::vector<uint8_t>& p)
 {
 	// PDS:
 	// 1 Byte Palette-ID
 	// 1 Byte Palette-Version
-	// danach Einträge zu je 5 Bytes:
+	// thereafter entries of 5 bytes each:
 	// entry_id, Y, Cr, Cb, Alpha
-	require(p.size() >= 2, "PDS-Segment ist zu kurz");
+	require(p.size() >= 2, "PDS too short");
+	require((p.size() - 2) % 5 == 0, "PDS size mismatch");
 
-	uint8_t paletteId = p[0];
+	const uint8_t paletteId = p[0];
 	Palette palette;
-
 	size_t pos = 2;
 	while (pos + 5 <= p.size())
 	{
-		uint8_t entryId = p[pos + 0];
-		uint8_t y       = p[pos + 1];
-		uint8_t cr      = p[pos + 2];
-		uint8_t cb      = p[pos + 3];
-		uint8_t alpha   = p[pos + 4];
+		const uint8_t entryId = p[pos + 0];
+		const uint8_t y       = p[pos + 1];
+		const uint8_t cr      = p[pos + 2];
+		const uint8_t cb      = p[pos + 3];
+		const uint8_t alpha   = p[pos + 4];
 
 		palette[entryId] = yuvToRgba(y, cr, cb, alpha);
 		pos += 5;
 	}
 
-	palettes_[paletteId] = std::move(palette);
+	m_palettes[paletteId] = std::move(palette);
 }
 
-void PGSStream::processOds(const std::vector<uint8_t>& p)
+/** read Object Definition Segment. */
+void PGSStream::readODS(const std::vector<uint8_t>& p)
 {
 	// ODS:
 	// object_id       2 Bytes
@@ -294,32 +470,28 @@ void PGSStream::processOds(const std::vector<uint8_t>& p)
 	// object_height      2 Bytes
 	//
 	// Der restliche Inhalt ist RLE-Daten.
-	require(p.size() >= 4, "ODS-Segment ist zu kurz");
+	require(p.size() >= 4, "ODS too short");
 
-	uint16_t objectId = readBE16(p, 0);
-	uint8_t sequenceFlags = p[3];
-
+	const uint16_t objectId = readBE16(p, 0);
+	const uint8_t sequenceFlags = p[3];
 	const bool first = (sequenceFlags & 0x80) != 0;
 	const bool last  = (sequenceFlags & 0x40) != 0;
 
-	Object& object = objects_[objectId];
+	Object& object = m_objects[objectId];
 	object.id = objectId;
-
 	size_t pos = 4;
 
 	if (first)
 	{
-		require(p.size() >= 11, "Erstes ODS-Segment ist zu kurz");
+		require(p.size() >= 11, "first ODS too short");
 
-		// Drei Bytes coded object data length.
-		// Die Länge wird hier nur validiert; die tatsächliche
-		// Fragmentierung wird über first/last behandelt.
-		uint32_t dataLength =
-			(static_cast<uint32_t>(p[4]) << 16) |
-			(static_cast<uint32_t>(p[5]) << 8)  |
-			static_cast<uint32_t>(p[6]);
-
-		(void)dataLength;
+		// p[4-6] encodes data object length.
+		// data object length is ignored here; the actual
+		// fragmentation is handled via first/last.
+		// uint32_t dataLength =
+		// 	(static_cast<uint32_t>(p[4]) << 16) |
+		// 	(static_cast<uint32_t>(p[5]) << 8)  |
+		// 	static_cast<uint32_t>(p[6]);
 
 		object.width = readBE16(p, 7);
 		object.height = readBE16(p, 9);
@@ -330,10 +502,7 @@ void PGSStream::processOds(const std::vector<uint8_t>& p)
 
 	if (pos < p.size())
 	{
-		object.rle.insert(
-			object.rle.end(),
-			p.begin() + static_cast<ptrdiff_t>(pos),
-			p.end());
+		object.rle.insert(object.rle.end(), p.begin() + static_cast<ptrdiff_t>(pos), p.end());
 	}
 
 	if (last)
@@ -342,39 +511,23 @@ void PGSStream::processOds(const std::vector<uint8_t>& p)
 	}
 }
 
-void PGSStream::composeCurrentFrame(void)
+void PGSStream::composeFrame(void)
 {
-	require(current_.width != 0 && current_.height != 0,
-	        "PCS enthält keine gültige Bildgröße");
-
-	Frame frame;
-	frame.time_show = static_cast<double>(current_.pts90k) / 90000.0;
-	frame.width = current_.width;
-	frame.height = current_.height;
-
-	const size_t pixelCount = static_cast<size_t>(frame.width) * frame.height;
-
-	frame.pixels.assign(pixelCount, 0);
-
-	std::map<uint8_t, Palette>::const_iterator paletteIt = palettes_.find(current_.paletteId);
-
-	if (paletteIt == palettes_.end())
+	for (const CompositionObject& co : m_compositions)
 	{
-		// Ohne Palette kann das Bild nicht sinnvoll dekodiert werden.
-		return;
-	}
+		std::map<uint8_t, Palette>::const_iterator paletteIt = m_palettes.find(co.paletteId);
+		if (paletteIt == m_palettes.end())
+		{
+			// image without palette cannot be decoded.
+			continue;
+		}
+		const Palette& palette = paletteIt->second;
 
-	const Palette& palette = paletteIt->second;
-
-	for (const CompositionObject& co : current_.compositionObjects)
-	{
-		std::map<uint16_t, Object>::const_iterator objectIt = objects_.find(co.objectId);
-
-		if (objectIt == objects_.end())
+		std::map<uint16_t, Object>::const_iterator objectIt = m_objects.find(co.objectId);
+		if (objectIt == m_objects.end())
 		{
 			continue;
 		}
-
 		const Object& object = objectIt->second;
 
 		if (!object.complete ||
@@ -384,109 +537,26 @@ void PGSStream::composeCurrentFrame(void)
 			continue;
 		}
 
-		std::vector<uint8_t> indices = decodeRle(object.rle, static_cast<size_t>(object.width) * static_cast<size_t>(object.height));
-
-		uint16_t drawWidth = object.width;
-		uint16_t drawHeight = object.height;
-		uint16_t sourceX = 0;
-		uint16_t sourceY = 0;
-
-		if (co.cropped & 0x40)
-		{
-			sourceX = co.cropX;
-			sourceY = co.cropY;
-			drawWidth = co.cropW;
-			drawHeight = co.cropH;
-		}
-
-		for (uint16_t y = 0; y < drawHeight; ++y)
-		{
-			for (uint16_t x = 0; x < drawWidth; ++x)
-			{
-				uint32_t sx = sourceX + x;
-				uint32_t sy = sourceY + y;
-
-				if ((sx >= object.width) ||
-				    (sy >= object.height))
-				{
-					continue;
-				}
-
-				int dstX = static_cast<int>(co.x) + x;
-				int dstY = static_cast<int>(co.y) + y;
-
-				if ((dstX < 0) || (dstY < 0) ||
-				    (dstX >= frame.width) ||
-				    (dstY >= frame.height))
-				{
-					continue;
-				}
-
-				uint8_t paletteIndex =
-					indices[static_cast<size_t>(sy) *
-					        object.width + sx];
-
-				std::map<uint8_t, uint32_t>::const_iterator colorIt = palette.find(paletteIndex);
-
-				if (colorIt == palette.end())
-				{
-					continue;
-				}
-
-				const uint32_t color = colorIt->second;
-
-				size_t dst =
-					(static_cast<size_t>(dstY) *
-					 frame.width + static_cast<size_t>(dstX));
-
-				frame.pixels[dst] = color;
-			}
-		}
-	}
-
-	m_frame_buffer.push_back(std::move(frame));
-}
-
-void PGSStream::decodeTextFrames(void)
-{
-	require(current_.width != 0 && current_.height != 0,
-	        "PCS enthält keine gültige Bildgröße");
-
-	std::map<uint8_t, Palette>::const_iterator paletteIt = palettes_.find(current_.paletteId);
-
-	if (paletteIt == palettes_.end())
-	{
-		// Ohne Palette kann das Bild nicht sinnvoll dekodiert werden.
-		return;
-	}
-
-	const Palette& palette = paletteIt->second;
-
-	for (const CompositionObject& co : current_.compositionObjects)
-	{
-		std::map<uint16_t, Object>::const_iterator objectIt = objects_.find(co.objectId);
-
-		if (objectIt == objects_.end())
-		{
-			continue;
-		}
-
-		const Object& object = objectIt->second;
-
-		if (!object.complete ||
-		    (object.width == 0) ||
-		    (object.height == 0))
-		{
-			continue;
-		}
-
-		std::vector<uint8_t> indices = decodeRle(object.rle, static_cast<size_t>(object.width) * static_cast<size_t>(object.height));
+		const size_t pixelCount = static_cast<size_t>(object.width) * static_cast<size_t>(object.height);
+		std::vector<uint8_t> indices = decodeRle(object.rle, pixelCount);
 
 		Frame frame;
-		frame.time_show = static_cast<double>(current_.pts90k) / 90000.0;
-		frame.width = object.width;
-		frame.height = object.height;
-		const size_t pixelCount = static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height);
+		frame.time.s = static_cast<double>(co.pts) / 90000.0;
+		frame.size.x = object.width;
+		frame.size.y = object.height;
+		frame.screen.x = co.width;
+		frame.screen.y = co.height;
+		if (co.cropped & 0x40)
+		{
+			frame.position.x = co.cropX;
+			frame.position.y = co.cropY;
+		}
+		else
+		{
+			frame.position.x = co.x;
+			frame.position.y = co.y;
+		}
+
 		frame.pixels.resize(pixelCount);
 
 		for (size_t x = 0; x < indices.size(); x++)
@@ -498,51 +568,42 @@ void PGSStream::decodeTextFrames(void)
 		}
 		m_frame_buffer.push_back(std::move(frame));
 	}
+	m_compositions.clear();
 }
 
 void PGSStream::processSegment(
 	const uint8_t type,
 	const uint32_t pts,
-	const uint32_t dts,
 	const std::vector<uint8_t>& p)
 {
 	switch (type)
 	{
 		case PCS:
-			processPcs(pts, dts, p);
+			readPCS(pts, p);
 			break;
 
 		case PDS:
-			processPds(p);
+			readPDS(p);
 			break;
 
 		case ODS:
-			processOds(p);
+			readODS(p);
 			break;
 
 		case END:
-
-			if (current_.active)
-			{
-				if (m_full_size)
-				{
-					composeCurrentFrame();
-				}
-				else
-				{
-					decodeTextFrames();
-				}
-				current_ = DisplaySet{};
-			}
+			composeFrame();
+			// compose frame this late, because PCS is usually stored first,
+			// with referenced palette or object segments stored later.
 			break;
 
 		case WDS:
-			// Die Fenstergrenzen sind für das Compositing nicht zwingend
-			// erforderlich, weil PCS bereits die Objektposition enthält.
+			// window definition segment is not necessary for compositing,
+			// because the presentation compositionn segment already
+			// contains object positions.
 			break;
 
 		default:
-			// Unbekannte Segmenttypen werden ignoriert.
+			// ignore unknown segment types.
 			break;
 	}
 }
@@ -555,7 +616,7 @@ void PGSStream::parse(void)
 		//
 		// 2 Bytes  magic "PG"
 		// 4 Bytes  PTS
-		// 4 Bytes  DTS
+		// 4 Bytes  DTS    (ignored)
 		// 1 Byte   Typ
 		// 2 Bytes  Segmentgröße
 		if (input_.size() < 13)
@@ -571,7 +632,7 @@ void PGSStream::parse(void)
 		}
 
 		const uint32_t pts = readBE32(input_, 2);
-		const uint32_t dts = readBE32(input_, 6);
+		// const uint32_t dts = readBE32(input_, 6);
 		const uint8_t type = input_[10];
 		const uint16_t length = readBE16(input_, 11);
 
@@ -586,6 +647,328 @@ void PGSStream::parse(void)
 
 		input_.erase(input_.begin(), input_.begin() + 13 + length);
 
-		processSegment(type, pts, dts, payload);
+		processSegment(type, pts, payload);
 	}
+}
+
+/** convert RGBA pixels of frame into indexed array with palette. */
+std::vector<uint8_t> PGSStream::makeIndexedPixels(
+	const Frame& frame,
+	Palette& palette) const
+{
+	std::unordered_map<uint32_t, uint8_t> lookup;
+	std::vector<uint8_t> indexed;
+	indexed.reserve(frame.pixels.size());
+
+	for (uint32_t rgba : frame.pixels)
+	{
+		const std::unordered_map<uint32_t, uint8_t>::const_iterator it = lookup.find(rgba);
+
+		if (it == lookup.end())
+		{
+			const uint8_t i = static_cast<uint8_t>(palette.size() + 1);
+			lookup.emplace(rgba, i);
+			palette.emplace(i, rgba);
+			indexed.push_back(i);
+		}
+		else
+		{
+			indexed.push_back(it->second);
+		}
+	}
+
+	return indexed;
+}
+
+/** write general PGS segment into buffer. */
+void PGSStream::writeSegment(
+	std::vector<uint8_t>& buffer,
+	const uint32_t pts,
+	const uint32_t dts,
+	const segment_t type,
+	const std::vector<uint8_t>& payload) const
+{
+	if (payload.size() > 0xffff)
+		throw std::runtime_error("PGS-Segment ist größer als 65535 Bytes");
+
+	// Segmentkopf:
+	// "PG", PTS, DTS, Typ, Länge
+	buffer.push_back('P');
+	buffer.push_back('G');
+
+	putBE32(buffer, pts);
+	putBE32(buffer, dts);
+
+	buffer.push_back(type);
+	putBE16(buffer, static_cast<uint16_t>(payload.size()));
+
+	buffer.insert(buffer.end(), payload.begin(), payload.end());
+}
+
+/** write Presentation Composition Segment. */
+void PGSStream::writePCS(
+	std::vector<uint8_t>& buffer,
+	const Frame& frame,
+	const uint16_t objectId,
+	const uint32_t pts,
+	const uint16_t compositionNumber,
+	const uint8_t compositionState,
+	const bool paletteOnlyUpdate,
+	const uint8_t paletteId,
+	const bool showObject) const
+{
+	std::vector<uint8_t> payload;
+
+	putBE16(payload, frame.screen.x);
+	putBE16(payload, frame.screen.y);
+
+	// Frame rate. 0x10 = 24 fps / üblicher Defaultwert.
+	payload.push_back(0x10);
+
+	putBE16(payload, compositionNumber);
+	payload.push_back(compositionState);
+
+	payload.push_back(paletteOnlyUpdate ? 0x80 : 0x00);
+	payload.push_back(paletteId);
+
+	if (showObject)
+	{
+		// Anzahl der Composition Objects
+		payload.push_back(1);
+
+		// Object ID
+		putBE16(payload, objectId);
+
+		// Window ID
+		payload.push_back(0);
+
+		// Object Cropping Flag + Reserved
+		payload.push_back(0x00);
+
+		// Cropping-Werte werden nur bei gesetztem Cropping Flag benötigt.
+		putBE16(payload, frame.position.x);
+		putBE16(payload, frame.position.y);
+	}
+	else
+	{
+		payload.push_back(0);
+	}
+
+	writeSegment(buffer, pts, 0, PCS, payload);
+}
+
+/** write Window Definition Segment. */
+void PGSStream::writeWDS(
+	std::vector<uint8_t>& buffer,
+	const Frame& frame,
+	const uint32_t pts) const
+{
+	std::vector<uint8_t> payload;
+
+	// Anzahl der Windows
+	payload.push_back(1);
+
+	// Window ID
+	payload.push_back(0);
+
+	// Window X, Y, Width, Height
+	putBE16(payload, frame.position.x);
+	putBE16(payload, frame.position.y);
+	putBE16(payload, frame.size.x);
+	putBE16(payload, frame.size.y);
+
+	writeSegment(buffer, pts, 0, WDS, payload);
+}
+
+/** write Palette Definition Segment. */
+void PGSStream::writePDS(
+	std::vector<uint8_t>& buffer,
+	const Palette& palette,
+	const uint32_t pts,
+	const uint8_t paletteId) const
+{
+	std::vector<uint8_t> payload;
+
+	// Palette ID
+	payload.push_back(paletteId);
+
+	// Palette-Version
+	payload.push_back(0);
+
+	for (Palette::const_iterator iter = palette.begin(); iter != palette.end(); ++iter)
+	{
+		const uint32_t yuva = rgbaToYuvA(iter->second);
+
+		payload.push_back(static_cast<uint8_t>(iter->first));   // Entry ID
+		payload.push_back(static_cast<uint8_t>(yuva >> 24));    // Y
+		payload.push_back(static_cast<uint8_t>(yuva >> 16));    // Cr
+		payload.push_back(static_cast<uint8_t>(yuva >> 8));     // Cb
+		payload.push_back(static_cast<uint8_t>(yuva));          // Alpha
+	}
+
+	writeSegment(buffer, pts, 0, PDS, payload);
+}
+
+/** write Object Definition Segment containing an RLE encoded frame. */
+void PGSStream::writeODS(
+	std::vector<uint8_t>& buffer,
+	const uint16_t objectId,
+	const uint16_t width,
+	const uint16_t height,
+	const std::vector<uint8_t>& rle,
+	const uint32_t pts) const
+{
+	/*
+		ODS-Daten:
+
+		Object ID       2 Bytes
+		Version         1 Byte
+		Sequence Flags  1 Byte
+		Data Length     3 Bytes
+
+		Bei einem First-Fragment folgen zusätzlich:
+		Width           2 Bytes
+		Height          2 Bytes
+	*/
+
+	constexpr size_t maxPayload = 0xffff;
+	constexpr size_t odsHeader = 11; // 2+1+1+3+2+2
+
+	size_t offset = 0;
+	uint8_t version = 0;
+
+	while (offset < rle.size())
+	{
+		const bool first = offset == 0;
+
+		// Payload-Größe einschließlich ODS-Kopfdaten
+		const size_t headerSize = first ? odsHeader : 7;
+		const size_t maxData = maxPayload - headerSize;
+		const size_t chunk = std::min(maxData, rle.size() - offset);
+
+		std::vector<uint8_t> payload;
+
+		putBE16(payload, objectId); // Object ID
+		payload.push_back(version++);
+
+		uint8_t sequence = 0;
+
+		if (first)
+			sequence |= 0x80; // first in sequence
+
+		if (offset + chunk == rle.size())
+			sequence |= 0x40; // last in sequence
+
+		payload.push_back(sequence);
+
+		const uint32_t dataLength =
+			static_cast<uint32_t>(chunk + (first ? 4 : 0));
+
+		putBE24(payload, dataLength);
+
+		if (first)
+		{
+			putBE16(payload, width);
+			putBE16(payload, height);
+		}
+
+		payload.insert(
+			payload.end(),
+			rle.begin() + static_cast<std::ptrdiff_t>(offset),
+			rle.begin() + static_cast<std::ptrdiff_t>(offset + chunk));
+
+		writeSegment(buffer, pts, 0, ODS, payload);
+
+		offset += chunk;
+	}
+}
+
+/** write display set. */
+void PGSStream::writeFrameDisplaySet(
+	std::vector<uint8_t>& buffer,
+	const Frame& frame,
+	const uint32_t pts,
+	const uint16_t compositionNumber,
+	const bool epochStart) const
+{
+	if (frame.screen.x == 0 || frame.screen.y == 0)
+		throw std::runtime_error("invalid screen size");
+
+	if (frame.size.x == 0 || frame.size.y == 0)
+		throw std::runtime_error("invalid frame size");
+
+	if (frame.position.x + frame.size.x > frame.screen.x ||
+		frame.position.y + frame.size.y > frame.screen.y)
+	{
+		throw std::runtime_error("frame not contained in screen");
+	}
+
+	Palette palette;
+	const std::vector<uint8_t> indexed = makeIndexedPixels(frame, palette);
+	const std::vector<uint8_t> rle = encodeRle(frame.size.x, frame.size.y, indexed);
+
+	const composition_t compositionState = epochStart ? COMPOSITION_EPOCH_START : COMPOSITION_NORMAL;
+
+	const uint16_t objectId = 0;
+	writePCS(
+		buffer,
+		frame,
+		objectId,
+		pts,
+		compositionNumber,
+		compositionState,
+		false,
+		0,
+		true);
+
+	writeWDS(buffer, frame, pts);
+	writePDS(buffer, palette, pts, 0);
+	writeODS(buffer, objectId, frame.size.x, frame.size.y, rle, pts);
+	writeSegment(buffer, pts, 0, END, {});
+}
+
+std::vector<uint8_t> PGSStream::saveFrames(const std::vector<Frame>& frames) const
+{
+	std::vector<uint8_t> payload;
+	uint16_t compositionNumber = 0;
+
+	for (const Frame& frame : frames)
+	{
+		if (frame.time.s < 0.0 || frame.time.t <= frame.time.s)
+			throw std::runtime_error("invalid frame timestamps");
+
+		if (frame.screen.x == 0 || frame.screen.y == 0)
+			throw std::runtime_error("invalid screen size");
+
+		if (frame.size.x == 0 || frame.size.y == 0)
+			throw std::runtime_error("invalid frame size");
+
+		if (frame.position.x + frame.size.x > frame.screen.x ||
+			frame.position.y + frame.size.y > frame.screen.y)
+		{
+			throw std::runtime_error("frame not contained in screen");
+		}
+
+		const uint32_t startPts = toPts(frame.time.s);
+		const uint32_t endPts   = toPts(frame.time.t);
+		const uint8_t compositionState = (compositionNumber == 0) ? COMPOSITION_EPOCH_START : COMPOSITION_NORMAL;
+
+		Palette palette;
+		const std::vector<uint8_t> indexed = makeIndexedPixels(frame, palette);
+		const std::vector<uint8_t> rle = encodeRle(frame.size.x, frame.size.y, indexed);
+
+		const uint16_t objectId = 0;
+		writePCS(payload, frame, objectId, startPts, compositionNumber, compositionState, false, 0, true);
+		compositionNumber++;
+		writeWDS(payload, frame, startPts);
+		writePDS(payload, palette, startPts, 0);
+		writeODS(payload, objectId, frame.size.x, frame.size.y, rle, startPts);
+		writeSegment(payload, startPts, 0, END, {});
+
+		// write empty display set to clear all subtitles.
+		writePCS(payload, frame, objectId, endPts, compositionNumber, COMPOSITION_NORMAL, false, 0, false);
+		compositionNumber++;
+		writeSegment(payload, endPts, 0, END, {});
+	}
+	return payload;
 }

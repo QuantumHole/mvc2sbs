@@ -164,12 +164,13 @@ static bool saveRGBA32AsPNG(
 
 PGSConverter::PGSConverter(const std::string& input_file_name, const size_t track_number, const std::string& track_id, const std::string& language) :
 	TrackConverter(input_file_name, track_number, track_id),
-	m_save_images(false),
+	m_save_images(true),
 	m_language(language),
 	m_pgs_stream(),
 	m_output_srt(input_file_name + "." + std::to_string(track_number) + "." + language + ".srt"),
 	m_ocr(language),
-	m_line_index(0)
+	m_line_index(0),
+	m_output_frames()
 {
 }
 
@@ -177,6 +178,11 @@ PGSConverter::~PGSConverter(void)
 {
 	m_output_srt.flush();
 	m_output_srt.close();
+	if (m_output_frames.size())
+	{
+		const std::vector<uint8_t> payload = m_pgs_stream.saveFrames(m_output_frames);
+		write(payload.data(), payload.size());
+	}
 }
 
 const std::string PGSConverter::output_extension(void) const
@@ -186,25 +192,25 @@ const std::string PGSConverter::output_extension(void) const
 
 void PGSConverter::append_ocr(const PGSStream::Frame& frame)
 {
-	const std::string text = m_ocr.read_text(frame.pixels, frame.width, frame.height);
+	const std::string text = m_ocr.read_text(frame.pixels, frame.size.x, frame.size.y);
 
 	if (text.empty())
 	{
-		const std::string filename = "unreadable." + m_language + "/" + timestamp(frame.time_show) + ".png";
-		saveRGBA32AsPNG(filename, frame.pixels, frame.width, frame.height);
+		const std::string filename = "unreadable." + m_language + "/" + timestamp(frame.time.s) + "-" + timestamp(frame.time.t) + ".png";
+		saveRGBA32AsPNG(filename, frame.pixels, frame.size.x, frame.size.y);
 	}
 
 	if (m_save_images)
 	{
-		const std::string filename = "subtitles." + m_language + "/" + timestamp(frame.time_show) + ".png";
-		saveRGBA32AsPNG(filename, frame.pixels, frame.width, frame.height);
+		const std::string filename = "subtitles." + m_language + "/" + timestamp(frame.time.s) + "-" + timestamp(frame.time.t) + ".png";
+		saveRGBA32AsPNG(filename, frame.pixels, frame.size.x, frame.size.y);
 	}
 
 	if (!text.empty())
 	{
 		// passed++;
 		m_output_srt << m_line_index << std::endl;
-		m_output_srt << timestamp(frame.time_show) << " --> " << timestamp(frame.time_hide) << std::endl;
+		m_output_srt << timestamp(frame.time.s) << " --> " << timestamp(frame.time.t) << std::endl;
 		m_output_srt << text << std::endl << std::endl;
 		m_line_index++;
 	}
@@ -274,13 +280,15 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const uint64
 
 		offset += segmentSize;
 	}
-	write(pgsdata.data(), pgsdata.size());
+	// write(pgsdata.data(), pgsdata.size());
 
 	m_pgs_stream.push(pgsdata);
 	while (m_pgs_stream.hasNextFrame())
 	{
 		PGSStream::Frame frame = m_pgs_stream.getNextFrame();
+		frame.screen.x *= 2;   // double screen size for SBS output
 		append_ocr(frame);
+		m_output_frames.push_back(frame);
 	}
 
 	return offset;
