@@ -283,7 +283,7 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const uint64
 	while (m_pgs_stream.hasNextFrame())
 	{
 		PGSStream::Frame frame = m_pgs_stream.getNextFrame();
-		frame.screen.x *= 2;   // double screen size for SBS output
+		frame.screen.x = static_cast<uint16_t>(frame.screen.x * 2);   // double screen size for SBS output
 		append_ocr(frame);
 		const std::vector<uint8_t> payload = m_pgs_stream.saveFrame(frame);
 		write(payload.data(), payload.size());

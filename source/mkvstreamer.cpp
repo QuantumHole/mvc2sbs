@@ -1,5 +1,6 @@
 #include "mkvstreamer.h"
 #include "pgsconverter.h"
+#include "h264converter.h"
 
 #include <ebml/EbmlElement.h>
 #include <ebml/EbmlHead.h>
@@ -504,10 +505,14 @@ void MKVStreamer::readTracks(libmatroska::KaxTracks& tracksElement, libebml::Ebm
 			entry->FindFirstElt(EBML_INFO(libmatroska::KaxTrackLanguage)));
 
 		const std::string language = (track_lang ? track_lang->GetValue() : "und");
-
-		if (getCodecId(*entry) == "S_HDMV/PGS")
+		const std::string codecId = getCodecId(*entry);
+		if (codecId == "S_HDMV/PGS")
 		{
 			m_converters[number] = new PGSConverter(m_input_file_name, number, "S_HDMV/PGS", language);
+		}
+		else if (codecId == "V_MPEG4/ISO/AVC")
+		{
+			m_converters[number] = new H264Converter(m_input_file_name, number, "V_MPEG4/ISO/AVC", language);
 		}
 	}
 }

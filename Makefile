@@ -19,6 +19,7 @@ OBJECTS := \
 	$(BUILD_DIR)/pgsconverter.o \
 	$(BUILD_DIR)/pgsstream.o \
 	$(BUILD_DIR)/ocr.o \
+	$(BUILD_DIR)/h264converter.o \
 
 .PHONY: all
 
