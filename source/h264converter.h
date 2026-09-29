@@ -15,6 +15,11 @@ class H264Converter : public TrackConverter
 		virtual const std::string output_extension(void) const override;
 
 	private:
+		size_t m_nal_length_size;
+		bool m_codec_private_written;
+
+		void write_start_code(void);
+		bool write_codec_private(const std::vector<uint8_t>& codecPrivate);
 };
 
 #endif
