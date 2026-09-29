@@ -1,7 +1,5 @@
 #include "ocr.h"
 
-#include <iostream>
-
 static std::vector<uint8_t> rgbaToGreyscale(const std::vector<uint32_t>& pixels)
 {
 	std::vector<uint8_t> greyscale(pixels.size());
@@ -47,8 +45,6 @@ OCR::OCR(const std::string& language) :
 		// m_ocr.SetPageSegMode(tesseract::PSM_SPARSE_TEXT_OSD);     // success rate: 1059 / 1062
 		// m_ocr.SetPageSegMode(tesseract::PSM_RAW_LINE);            // success rate: 1062 / 1062
 		// m_ocr.SetPageSegMode(tesseract::PSM_COUNT);               // success rate: 1062 / 1062
-
-		std::cout << "OCR initialized for language " << language << std::endl;
 	}
 }
 
@@ -80,7 +76,6 @@ std::string OCR::read_text(
 
 	if (greyscale.size() == 0)
 	{
-		std::cout << "no greyscale image data" << std::endl;
 		return "";
 	}
 

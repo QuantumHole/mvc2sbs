@@ -2,23 +2,14 @@
 #include "pgsconverter.h"
 #include "h264converter.h"
 
-#include <ebml/EbmlElement.h>
 #include <ebml/EbmlHead.h>
 #include <ebml/StdIOCallback.h>
 
 #include <matroska/KaxContexts.h>
 #include <matroska/KaxCluster.h>
-#include <matroska/KaxClusterData.h>
 #include <matroska/KaxSegment.h>
-#include <matroska/KaxInfo.h>
-#include <matroska/KaxInfoData.h>
 
-#include <cstdint>
-#include <fstream>
 #include <iostream>
-#include <map>
-#include <set>
-#include <stdexcept>
 
 // libebml      1.4.7
 // libmatroska  1.7.2
@@ -293,7 +284,8 @@ static uint64_t getFramePts(
 MKVStreamer::MKVStreamer(const std::string& filename) :
 	m_input_file_name(filename),
 	m_input_file_size(0),
-	m_converters()
+	m_converters(),
+	m_last_status_time(std::chrono::steady_clock::now())
 {
 }
 
@@ -360,8 +352,17 @@ void MKVStreamer::readBlock(
 		converter.add_data(data.Buffer(), data.Size(), frameinfo);
 	}
 
+	/* print status only once per second. */
+    const auto now = std::chrono::steady_clock::now();
+    if (now - m_last_status_time < std::chrono::seconds(1))
+    {
+        return;
+    }
+    m_last_status_time = now;
+
 	const double seconds = static_cast<double>(blockPts) / 1e9;
 	std::cout << "queued timecode: " << seconds << "s.\r";
+	fflush(stdout);
 }
 
 /** process block group and iterate over blocks. */

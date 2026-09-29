@@ -16,6 +16,7 @@ class MKVStreamer
 		const std::string m_input_file_name;
 		size_t m_input_file_size;
 		std::map<uint64_t, TrackConverter*> m_converters;
+		std::chrono::steady_clock::time_point m_last_status_time;
 
 		void readBlock(
 			libmatroska::KaxInternalBlock& block,

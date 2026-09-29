@@ -61,7 +61,7 @@ void TrackConverter::run_loop(void)
 
 	if (!m_output)
 	{
-		throw std::runtime_error("Kann Datei nicht öffnen: " + name);
+		throw std::runtime_error("failed opening file: " + name);
 	}
 
 	while (m_keep_running)
@@ -79,12 +79,11 @@ void TrackConverter::run_loop(void)
 
 		if (processed != block.data.size())
 		{
-			std::cout << "block at " << block.info.pts << "ns not completed" << std::endl;
+			std::cout << "block in track " << m_track_info.trackNumber << " at " << (static_cast<double>(block.info.pts) / 1e9) << "s not completed" << std::endl;
 		}
 		m_data_buffer.erase(m_data_buffer.begin(), m_data_buffer.begin() + 1);
 		m_mutex.unlock();
 	}
-	std::cout << "thread finished for track " << m_track_info.trackNumber << std::endl;
 }
 
 void TrackConverter::runner(TrackConverter* instance)
@@ -94,9 +93,7 @@ void TrackConverter::runner(TrackConverter* instance)
 
 void TrackConverter::add_data(const std::vector<uint8_t>& data, const FrameInfo& frameinfo)
 {
-	// const std::lock_guard<std::mutex> lock(m_mutex);
 	m_mutex.lock();
-	// m_data_buffer.insert(m_data_buffer.end(), data.begin(), data.end());
 	m_data_buffer.emplace_back(frameinfo, data);
 	m_mutex.unlock();
 
@@ -108,7 +105,6 @@ void TrackConverter::add_data(const std::vector<uint8_t>& data, const FrameInfo&
 
 void TrackConverter::add_data(const uint8_t* data, const size_t size, const FrameInfo& frameinfo)
 {
-	// const std::lock_guard<std::mutex> lock(m_mutex);
 	m_mutex.lock();
 	m_data_buffer.emplace_back(frameinfo, data, size);
 	m_mutex.unlock();
@@ -125,6 +121,6 @@ void TrackConverter::write(const uint8_t* data, const size_t size)
 
 	if (!m_output)
 	{
-		throw std::runtime_error("Fehler beim Schreiben der SUP-Datei");
+		throw std::runtime_error("failed writing SUP file");
 	}
 }
