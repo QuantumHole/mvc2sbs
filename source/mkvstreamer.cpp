@@ -25,17 +25,17 @@ const T* FindElement(const libebml::EbmlMaster& master)
 	return static_cast<const T*>(master.FindFirstElt(EBML_INFO(T)));
 }
 
-static std::uint64_t GetTrackNumber(const libmatroska::KaxTrackEntry* track)
+static uint64_t GetTrackNumber(const libmatroska::KaxTrackEntry* track)
 {
 	if (!track)
 	{
 		return 0;
 	}
 
-	const auto* element = FindElement<libmatroska::KaxTrackNumber>(*track);
+	const libmatroska::KaxTrackNumber* element = FindElement<libmatroska::KaxTrackNumber>(*track);
 
 	return element
-	    ? static_cast<std::uint64_t>(*element)
+	    ? static_cast<uint64_t>(*element)
 	    : 0;
 }
 
@@ -46,7 +46,7 @@ inline std::string GetCodecId(const libmatroska::KaxTrackEntry* track)
 		return {};
 	}
 
-	const auto* element = FindElement<libmatroska::KaxCodecID>(*track);
+	const libmatroska::KaxCodecID* element = FindElement<libmatroska::KaxCodecID>(*track);
 
 	if (!element)
 	{
@@ -99,22 +99,22 @@ static uint64_t readTimecodeScale(
 	return 1000000ULL;
 }
 
-static std::vector<std::uint8_t> GetCodecPrivate(const libmatroska::KaxTrackEntry* track)
+static std::vector<uint8_t> GetCodecPrivate(const libmatroska::KaxTrackEntry* track)
 {
 	if (!track)
 	{
 		return {};
 	}
 
-	const auto* element = FindElement<libmatroska::KaxCodecPrivate>(*track);
+	const libmatroska::KaxCodecPrivate* element = FindElement<libmatroska::KaxCodecPrivate>(*track);
 
 	if (!element)
 	{
 		return {};
 	}
 
-	const auto* buffer = element->GetBuffer();
-	const auto size = static_cast<std::size_t>(element->GetSize());
+	const uint8_t* buffer = element->GetBuffer();
+	const size_t size = element->GetSize();
 
 	if (!buffer || (size == 0))
 	{
@@ -122,78 +122,78 @@ static std::vector<std::uint8_t> GetCodecPrivate(const libmatroska::KaxTrackEntr
 	}
 
 	return {
-	    reinterpret_cast<const std::uint8_t*>(buffer),
-	    reinterpret_cast<const std::uint8_t*>(buffer) + size
+	    reinterpret_cast<const uint8_t*>(buffer),
+	    reinterpret_cast<const uint8_t*>(buffer) + size
 	};
 }
 
-static std::uint64_t GetVideoWidth(const libmatroska::KaxTrackEntry* track)
+static uint64_t GetVideoWidth(const libmatroska::KaxTrackEntry* track)
 {
 	if (!track)
 	{
 		return 0;
 	}
 
-	const auto* video = FindElement<libmatroska::KaxTrackVideo>(*track);
+	const libmatroska::KaxTrackVideo* video = FindElement<libmatroska::KaxTrackVideo>(*track);
 
 	if (!video)
 	{
 		return 0;
 	}
 
-	const auto* width = FindElement<libmatroska::KaxVideoPixelWidth>(*video);
+	const libmatroska::KaxVideoPixelWidth* width = FindElement<libmatroska::KaxVideoPixelWidth>(*video);
 
 	return width
-	    ? static_cast<std::uint64_t>(*width)
+	    ? static_cast<uint64_t>(*width)
 	    : 0;
 }
 
-static std::uint64_t GetVideoHeight( const libmatroska::KaxTrackEntry* track)
+static uint64_t GetVideoHeight( const libmatroska::KaxTrackEntry* track)
 {
 	if (!track)
 	{
 		return 0;
 	}
 
-	const auto* video = FindElement<libmatroska::KaxTrackVideo>(*track);
+	const libmatroska::KaxTrackVideo* video = FindElement<libmatroska::KaxTrackVideo>(*track);
 
 	if (!video)
 	{
 		return 0;
 	}
 
-	const auto* height = FindElement<libmatroska::KaxVideoPixelHeight>(*video);
+	const libmatroska::KaxVideoPixelHeight* height = FindElement<libmatroska::KaxVideoPixelHeight>(*video);
 
 	return height
-	    ? static_cast<std::uint64_t>(*height)
+	    ? static_cast<uint64_t>(*height)
 	    : 0;
 }
 
-static std::uint64_t GetCodecDelay(const libmatroska::KaxTrackEntry* track)
+static uint64_t GetCodecDelay(const libmatroska::KaxTrackEntry* track)
 {
 	if (!track)
 	{
 		return 0;
 	}
 
-	const auto* element = FindElement<libmatroska::KaxCodecDelay>(*track);
+	const libmatroska::KaxCodecDelay* element = FindElement<libmatroska::KaxCodecDelay>(*track);
 
 	return element
-	    ? static_cast<std::uint64_t>(*element)
+	    ? static_cast<uint64_t>(*element)
 	    : 0;
 }
 
-static std::uint64_t GetDefaultDuration(const libmatroska::KaxTrackEntry* track)
+static uint64_t GetDefaultDuration(const libmatroska::KaxTrackEntry* track)
 {
 	if (!track)
 	{
 		return 0;
 	}
 
-	const auto* element = FindElement<libmatroska::KaxTrackDefaultDuration>(*track);
+	const libmatroska::KaxTrackDefaultDuration* element = FindElement<libmatroska::KaxTrackDefaultDuration>(*track);
 
 	return element
-	    ? static_cast<std::uint64_t>(*element)
+	    ? static_cast<uint64_t>(*element)
 	    : 0;
 }
 
@@ -204,7 +204,7 @@ static std::string GetTrackLanguage(const libmatroska::KaxTrackEntry* track)
 		return "und";
 	}
 
-	const auto* element = FindElement<libmatroska::KaxTrackLanguage>(*track);
+	const libmatroska::KaxTrackLanguage* element = FindElement<libmatroska::KaxTrackLanguage>(*track);
 
 	if (!element)
 	{
@@ -334,7 +334,7 @@ void MKVStreamer::readBlock(
 
 	bool keyframe = false;
 
-	if (auto* simpleBlock = dynamic_cast<libmatroska::KaxSimpleBlock*>(&block))
+	if (libmatroska::KaxSimpleBlock* simpleBlock = dynamic_cast<libmatroska::KaxSimpleBlock*>(&block))
 	{
 		keyframe = simpleBlock->IsKeyframe();
 	}
@@ -353,7 +353,7 @@ void MKVStreamer::readBlock(
 	}
 
 	/* print status only once per second. */
-    const auto now = std::chrono::steady_clock::now();
+    const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
     if (now - m_last_status_time < std::chrono::seconds(1))
     {
         return;

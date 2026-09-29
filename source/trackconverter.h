@@ -13,8 +13,8 @@ class TrackConverter
 		struct TrackInfo
 		{
 			uint64_t trackNumber = 0;
-			std::string codecId;
-			std::vector<std::uint8_t> codecPrivate;
+			std::string codecId = "";
+			std::vector<uint8_t> codecPrivate = {};
 			uint64_t width = 0;
 			uint64_t height = 0;
 			uint64_t codecDelay = 0;        // ns

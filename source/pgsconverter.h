@@ -15,7 +15,7 @@ class PGSConverter : public TrackConverter
 		OCR m_ocr;
 		size_t m_line_index;
 
-		void append_ocr(const PGSStream::Frame& frame);
+		void append_ocr(const PGSStream::PGSFrame& frame);
 
 	protected:
 		virtual const std::string output_extension(void) const override;

@@ -342,14 +342,14 @@ bool PGSStream::hasNextFrame(void) const
 	return !m_input_frames.empty();
 }
 
-PGSStream::Frame PGSStream::getNextFrame(void)
+PGSStream::PGSFrame PGSStream::getNextFrame(void)
 {
 	if (m_input_frames.empty())
 	{
 		throw std::runtime_error("Kein vollständiger PGS-Frame verfügbar");
 	}
 
-	Frame result = std::move(m_input_frames.front());
+	PGSFrame result = std::move(m_input_frames.front());
 	m_input_frames.pop_front();
 	return result;
 }
@@ -386,7 +386,7 @@ void PGSStream::readPCS(
 		// set hide timestamps for all frames currently in frame buffer
 		while (!m_frame_buffer.empty())
 		{
-			Frame result = std::move(m_frame_buffer.front());
+			PGSFrame result = std::move(m_frame_buffer.front());
 			m_frame_buffer.pop_front();
 			result.time.t = static_cast<double>(pts) / 90000.0;
 			m_input_frames.push_back(result);
@@ -552,7 +552,7 @@ void PGSStream::composeFrame(void)
 		const size_t pixelCount = static_cast<size_t>(object.width) * static_cast<size_t>(object.height);
 		std::vector<uint8_t> indices = decodeRle(object.rle, pixelCount);
 
-		Frame frame;
+		PGSFrame frame;
 		frame.time.s = static_cast<double>(co.pts) / 90000.0;
 		frame.size.x = object.width;
 		frame.size.y = object.height;
@@ -666,7 +666,7 @@ void PGSStream::parse(void)
 
 /** convert RGBA pixels of frame into indexed array with palette. */
 std::vector<uint8_t> PGSStream::makeIndexedPixels(
-	const Frame& frame,
+	const PGSFrame& frame,
 	Palette& palette) const
 {
 	std::unordered_map<uint32_t, uint8_t> lookup;
@@ -724,7 +724,7 @@ void PGSStream::writeSegment(
 /** write Presentation Composition Segment. */
 void PGSStream::writePCS(
 	std::vector<uint8_t>& buffer,
-	const Frame& frame,
+	const PGSFrame& frame,
 	const uint16_t objectId,
 	const uint32_t pts,
 	const uint16_t compositionNumber,
@@ -776,7 +776,7 @@ void PGSStream::writePCS(
 /** write Window Definition Segment. */
 void PGSStream::writeWDS(
 	std::vector<uint8_t>& buffer,
-	const Frame& frame,
+	const PGSFrame& frame,
 	const uint32_t pts) const
 {
 	std::vector<uint8_t> payload;
@@ -905,7 +905,7 @@ void PGSStream::writeODS(
 /** write display set. */
 void PGSStream::writeFrameDisplaySet(
 	std::vector<uint8_t>& buffer,
-	const Frame& frame,
+	const PGSFrame& frame,
 	const uint32_t pts,
 	const uint16_t compositionNumber,
 	const bool epochStart) const
@@ -950,7 +950,7 @@ void PGSStream::writeFrameDisplaySet(
 	writeSegment(buffer, pts, 0, END, {});
 }
 
-std::vector<uint8_t> PGSStream::saveFrame(const Frame& frame)
+std::vector<uint8_t> PGSStream::saveFrame(const PGSFrame& frame)
 {
 	std::vector<uint8_t> payload;
 

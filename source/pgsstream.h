@@ -25,12 +25,12 @@ class PGSStream {
 			uint16_t y = 0;
 		};
 
-		struct Frame
+		struct PGSFrame
 		{
-			dvec2 time;
-			uvec2 screen;     // screen size
-			uvec2 size;
-			uvec2 position;
+			dvec2 time = {0.0, 0.0};
+			uvec2 screen = {0, 0};     // screen size
+			uvec2 size = {0, 0};
+			uvec2 position = {0, 0};
 			std::vector<uint32_t> pixels = {};   // 32bit RGBA values
 		};
 
@@ -41,9 +41,9 @@ class PGSStream {
 		void push(const uint8_t* data, const size_t size);
 		void push(const std::vector<uint8_t>& data);
 		bool hasNextFrame(void) const;
-		Frame getNextFrame(void);
+		PGSFrame getNextFrame(void);
 		void reset(void);
-		std::vector<uint8_t> saveFrame(const Frame& frame);
+		std::vector<uint8_t> saveFrame(const PGSFrame& frame);
 
 	private:
 		typedef enum : uint8_t
@@ -90,8 +90,8 @@ class PGSStream {
 		};
 
 		std::vector<uint8_t> m_input_data = {};
-		std::deque<Frame> m_frame_buffer = {};
-		std::deque<Frame> m_input_frames = {};
+		std::deque<PGSFrame> m_frame_buffer = {};
+		std::deque<PGSFrame> m_input_frames = {};
 
 		std::map<uint8_t, Palette> m_palettes = {};
 		std::map<uint16_t, Object> m_objects = {};
@@ -112,7 +112,7 @@ class PGSStream {
 
 		/** output functions */
 		std::vector<uint8_t> makeIndexedPixels(
-			const Frame& frame,
+			const PGSFrame& frame,
 			Palette& palette) const;
 		void writeSegment(
 			std::vector<uint8_t>& file,
@@ -122,7 +122,7 @@ class PGSStream {
 			const std::vector<uint8_t>& payload) const;
 		void writePCS(
 			std::vector<uint8_t>& file,
-			const Frame& frame,
+			const PGSFrame& frame,
 			const uint16_t objectId,
 			const uint32_t pts,
 			const uint16_t compositionNumber,
@@ -132,7 +132,7 @@ class PGSStream {
 			const bool showObject) const;
 		void writeWDS(
 			std::vector<uint8_t>& file,
-			const Frame& frame,
+			const PGSFrame& frame,
 			const uint32_t pts) const;
 		void writePDS(
 			std::vector<uint8_t>& file,
@@ -148,7 +148,7 @@ class PGSStream {
 			const uint32_t pts) const;
 		void writeFrameDisplaySet(
 			std::vector<uint8_t>& file,
-			const Frame& frame,
+			const PGSFrame& frame,
 			const uint32_t pts,
 			const uint16_t compositionNumber,
 			const bool epochStart) const;

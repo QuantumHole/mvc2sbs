@@ -31,18 +31,18 @@ static std::string timestamp(const double seconds)
 
 	std::ostringstream result;
 
-	result << std::setfill('0')
-	       << std::setw(2) << hours << ":"
-	       << std::setw(2) << minutes << ":"
-	       << std::setw(2) << secs << "."
-	       << std::setw(3) << millis;
+	result << setfill('0')
+	       << setw(2) << hours << ":"
+	       << setw(2) << minutes << ":"
+	       << setw(2) << secs << "."
+	       << setw(3) << millis;
 
 	return result.str();
 }
 
 static bool saveRGBA32AsPNG(
 	const std::string& filename,
-	const std::vector<std::uint32_t>& pixels,
+	const std::vector<uint32_t>& pixels,
 	const size_t width,
 	const size_t height)
 {
@@ -74,7 +74,7 @@ static bool saveRGBA32AsPNG(
 		return false;
 	}
 
-	FILE* file = std::fopen(filename.c_str(), "wb");
+	FILE* file = fopen(filename.c_str(), "wb");
 
 	if (!file)
 	{
@@ -89,7 +89,7 @@ static bool saveRGBA32AsPNG(
 
 	if (!png)
 	{
-		std::fclose(file);
+		fclose(file);
 		return false;
 	}
 
@@ -98,14 +98,14 @@ static bool saveRGBA32AsPNG(
 	if (!info)
 	{
 		png_destroy_write_struct(&png, nullptr);
-		std::fclose(file);
+		fclose(file);
 		return false;
 	}
 
 	if (setjmp(png_jmpbuf(png)))
 	{
 		png_destroy_write_struct(&png, &info);
-		std::fclose(file);
+		fclose(file);
 		return false;
 	}
 
@@ -125,30 +125,30 @@ static bool saveRGBA32AsPNG(
 	png_write_info(png, info);
 
 	// libpng erwartet pro Zeile zusammenhängende RGBA-Bytes.
-	std::vector<std::uint8_t> row(
+	std::vector<uint8_t> row(
 		static_cast<size_t>(width) * 4);
 
-	for (std::uint32_t y = 0; y < height; ++y)
+	for (uint32_t y = 0; y < height; ++y)
 	{
-		for (std::uint32_t x = 0; x < width; ++x)
+		for (uint32_t x = 0; x < width; ++x)
 		{
-			const std::uint32_t argb =
+			const uint32_t argb =
 				pixels[static_cast<size_t>(y) * width + x];
 
 			const size_t offset =
 				static_cast<size_t>(x) * 4;
 
 			// Annahme: 0xAARRGGBB
-			row[offset + 0] = static_cast<std::uint8_t>(
+			row[offset + 0] = static_cast<uint8_t>(
 				(argb >> 16) & 0xff); // R
 
-			row[offset + 1] = static_cast<std::uint8_t>(
+			row[offset + 1] = static_cast<uint8_t>(
 				(argb >> 8) & 0xff);  // G
 
-			row[offset + 2] = static_cast<std::uint8_t>(
+			row[offset + 2] = static_cast<uint8_t>(
 				argb & 0xff);         // B
 
-			row[offset + 3] = static_cast<std::uint8_t>(
+			row[offset + 3] = static_cast<uint8_t>(
 				(argb >> 24) & 0xff); // A
 		}
 
@@ -157,7 +157,7 @@ static bool saveRGBA32AsPNG(
 
 	png_write_end(png, nullptr);
 	png_destroy_write_struct(&png, &info);
-	std::fclose(file);
+	fclose(file);
 
 	return true;
 }
@@ -183,7 +183,7 @@ const std::string PGSConverter::output_extension(void) const
 	return "." + m_track_info.language + ".sup";
 }
 
-void PGSConverter::append_ocr(const PGSStream::Frame& frame)
+void PGSConverter::append_ocr(const PGSStream::PGSFrame& frame)
 {
 	const std::string text = m_ocr.read_text(frame.pixels, frame.size.x, frame.size.y);
 
@@ -272,7 +272,7 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 	m_pgs_stream.push(pgsdata);
 	while (m_pgs_stream.hasNextFrame())
 	{
-		PGSStream::Frame frame = m_pgs_stream.getNextFrame();
+		PGSStream::PGSFrame frame = m_pgs_stream.getNextFrame();
 		frame.screen.x = static_cast<uint16_t>(frame.screen.x * 2);   // double screen size for SBS output
 		append_ocr(frame);
 		const std::vector<uint8_t> payload = m_pgs_stream.saveFrame(frame);
