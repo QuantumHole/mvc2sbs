@@ -31,11 +31,11 @@ static std::string timestamp(const double seconds)
 
 	std::ostringstream result;
 
-	result << setfill('0')
-	       << setw(2) << hours << ":"
-	       << setw(2) << minutes << ":"
-	       << setw(2) << secs << "."
-	       << setw(3) << millis;
+	result << std::setfill('0')
+	       << std::setw(2) << hours << ":"
+	       << std::setw(2) << minutes << ":"
+	       << std::setw(2) << secs << "."
+	       << std::setw(3) << millis;
 
 	return result.str();
 }

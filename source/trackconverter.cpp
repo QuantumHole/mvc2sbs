@@ -54,7 +54,7 @@ void TrackConverter::run_loop(void)
 	const std::string name = output_file_name();
 
 	s << "Track " << m_track_info.trackNumber << " -> " << name << std::endl;
-	std::cout << s.str();
+	std::cerr << s.str();
 	s.str("");
 
 	m_output.open(name, std::ios::binary | std::ios::out | std::ios::trunc);
@@ -79,7 +79,7 @@ void TrackConverter::run_loop(void)
 
 		if (processed != block.data.size())
 		{
-			std::cout << "block in track " << m_track_info.trackNumber << " at " << (static_cast<double>(block.info.pts) / 1e9) << "s not completed" << std::endl;
+			std::cerr << "block in track " << m_track_info.trackNumber << " at " << (static_cast<double>(block.info.pts) / 1e9) << "s not completed" << std::endl;
 		}
 		m_data_buffer.erase(m_data_buffer.begin(), m_data_buffer.begin() + 1);
 		m_mutex.unlock();

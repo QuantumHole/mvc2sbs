@@ -361,7 +361,7 @@ void MKVStreamer::readBlock(
     m_last_status_time = now;
 
 	const double seconds = static_cast<double>(blockPts) / 1e9;
-	std::cout << "queued timecode: " << seconds << "s.\r";
+	std::cerr << "queued timecode: " << seconds << "s.\r";
 	fflush(stdout);
 }
 
