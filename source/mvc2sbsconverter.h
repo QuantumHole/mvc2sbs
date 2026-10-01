@@ -1,0 +1,53 @@
+#ifndef MVC2SBSCONVERTER_H
+#define MVC2SBSCONVERTER_H
+
+#include "edge264.h"
+
+#include <algorithm>
+#include <cstdint>
+#include <cerrno>
+#include <ostream>
+#include <stdexcept>
+#include <vector>
+
+class MVC2SBSConverter
+{
+	public:
+		explicit MVC2SBSConverter(std::ostream& output);
+		~MVC2SBSConverter(void);
+
+		bool feed(const std::vector<uint8_t>& packet);
+		bool finish(void);
+
+	private:
+		MVC2SBSConverter(const MVC2SBSConverter&);
+		MVC2SBSConverter& operator=(const MVC2SBSConverter&);
+
+		// NAL parsing
+		bool processInput(const bool endOfStream);
+		size_t findStartCode(const size_t from) const;
+
+		// edge264
+		bool decodeNAL(const size_t begin, const size_t end);
+		bool drainFrames(void);
+		bool flush(void);
+
+		// output
+		bool writeFrame(const Edge264Frame& frame);
+
+		Edge264Decoder* decoder_;
+		std::ostream& output_;
+
+		std::vector<uint8_t> input_;
+		size_t consumed_;
+
+		bool finished_;
+
+		// Y4M
+		bool y4mStarted_;
+
+		// Number of corrupt NAL units skipped.
+		unsigned skippedCorrupt_;
+};
+
+#endif

@@ -353,12 +353,13 @@ void MKVStreamer::readBlock(
 	}
 
 	/* print status only once per second. */
-    const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-    if (now - m_last_status_time < std::chrono::seconds(1))
-    {
-        return;
-    }
-    m_last_status_time = now;
+	const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+	if (now - m_last_status_time < std::chrono::seconds(1))
+	{
+		return;
+	}
+	m_last_status_time = now;
 
 	const double seconds = static_cast<double>(blockPts) / 1e9;
 	std::cerr << "queued timecode: " << seconds << "s.\r";

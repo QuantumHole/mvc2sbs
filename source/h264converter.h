@@ -2,7 +2,7 @@
 #define H264CONVERTER_H
 
 #include "trackconverter.h"
-// #include "mvc2sbsconverter.h"
+#include "mvc2sbsconverter.h"
 
 /** reads MKV track into a list of h264 video frames. */
 class H264Converter : public TrackConverter
@@ -18,8 +18,8 @@ class H264Converter : public TrackConverter
 	private:
 		size_t m_nal_length_size;
 		bool m_codec_private_written;
-		// std::ofstream m_sbs_output;
-		//  MVC2SBSConverter m_mvc2sbs;
+		std::ofstream m_sbs_output;
+		MVC2SBSConverter m_mvc2sbs;
 
 		void write_start_code(std::vector<uint8_t>& data);
 		bool write_codec_private(const std::vector<uint8_t>& codecPrivate, std::vector<uint8_t>& data);
