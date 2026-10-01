@@ -18,7 +18,6 @@ class H264Converter : public TrackConverter
 	private:
 		size_t m_nal_length_size;
 		bool m_codec_private_written;
-		std::ofstream m_sbs_output;
 		MVC2SBSConverter m_mvc2sbs;
 
 		void write_start_code(std::vector<uint8_t>& data);

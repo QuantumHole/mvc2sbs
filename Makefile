@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 PROJECT_ROOT := .
-DEPENDENCIES = "libmatroska libebml tesseract libpng"
+DEPENDENCIES = "libmatroska libebml tesseract libpng libavcodec libavutil"
 
 include common/cplusplus.mk
 include common/license.mk

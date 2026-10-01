@@ -15,8 +15,7 @@ H264Converter::H264Converter(
 	TrackConverter(input_file_name, info),
 	m_nal_length_size(0),
 	m_codec_private_written(false),
-	m_sbs_output(input_file_name + ".y4m", std::ios::binary),
-	m_mvc2sbs(std::cout)
+	m_mvc2sbs(std::cout, MVC2SBSConverter::FORMAT_H264)
 {
 	if (info.codecPrivate.size() < 5)
 	{
