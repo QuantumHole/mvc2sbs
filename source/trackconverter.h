@@ -6,6 +6,8 @@
 #include <vector>
 #include <thread>
 #include <fstream>
+#include <deque>
+#include <condition_variable>
 
 class TrackConverter
 {
@@ -37,6 +39,12 @@ class TrackConverter
 			FrameInfo info;
 			std::vector<uint8_t> data;  // block data
 
+			BlockData(void) :
+				info(),
+				data()
+			{
+			}
+
 			BlockData(const FrameInfo& i, const std::vector<uint8_t>& d) :
 				info(i),
 				data(d)
@@ -67,9 +75,10 @@ class TrackConverter
 		const std::string m_input_file_name;
 
 		std::ofstream m_output;
-		std::vector<BlockData> m_data_buffer;
+		std::deque<BlockData> m_data_buffer;
 		std::mutex m_mutex;
 		std::thread m_thread;
+		std::condition_variable m_data_available;
 		bool m_keep_running;
 
 		std::string output_file_name(void) const;

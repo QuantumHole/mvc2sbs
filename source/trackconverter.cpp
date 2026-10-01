@@ -11,6 +11,7 @@ TrackConverter::TrackConverter(const std::string& input_file_name, const TrackIn
 	m_data_buffer(),
 	m_mutex(),
 	m_thread(),
+	m_data_available(),
 	m_keep_running(true)
 {
 }
@@ -18,6 +19,7 @@ TrackConverter::TrackConverter(const std::string& input_file_name, const TrackIn
 TrackConverter::~TrackConverter(void)
 {
 	m_keep_running = false;
+	m_data_available.notify_one();
 
 	if (m_thread.joinable())
 	{
@@ -66,23 +68,38 @@ void TrackConverter::run_loop(void)
 
 	while (m_keep_running)
 	{
-		m_mutex.lock();
-
-		if (m_data_buffer.size() == 0)
+		BlockData block;
+		size_t processed;
 		{
-			m_mutex.unlock();
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
-			continue;
+			std::unique_lock<std::mutex> lock(m_mutex);
+
+			m_data_available.wait(lock, [this] {
+				return !m_data_buffer.empty() || !m_keep_running;
+			});
+
+			if (!m_keep_running && m_data_buffer.empty())
+			{
+				break;
+			}
+
+			block = std::move(m_data_buffer.front());
+			m_data_buffer.pop_front();
+
+			// keep this function inside the locked section.
+			// Otherwise, this buffer gets filled with uncompressed
+			// frames, waiting to be re-compressed and saved to disk.
+			processed = process_data(block.data, block.info);
 		}
-		const BlockData& block = *m_data_buffer.begin();
-		const size_t processed = process_data(block.data, block.info);
 
 		if (processed != block.data.size())
 		{
-			std::cerr << "block in track " << m_track_info.trackNumber << " at " << (static_cast<double>(block.info.pts) / 1e9) << "s not completed" << std::endl;
+			std::cerr << "block in track "
+			          << m_track_info.trackNumber
+			          << " at "
+			          << (static_cast<double>(block.info.pts) / 1e9)
+			          << "s not completed"
+			          << std::endl;
 		}
-		m_data_buffer.erase(m_data_buffer.begin(), m_data_buffer.begin() + 1);
-		m_mutex.unlock();
 	}
 }
 
@@ -93,9 +110,12 @@ void TrackConverter::runner(TrackConverter* instance)
 
 void TrackConverter::add_data(const std::vector<uint8_t>& data, const FrameInfo& frameinfo)
 {
-	m_mutex.lock();
-	m_data_buffer.emplace_back(frameinfo, data);
-	m_mutex.unlock();
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_data_buffer.emplace_back(frameinfo, data);
+	}
+
+	m_data_available.notify_one();
 
 	if (!m_thread.joinable())
 	{
@@ -105,9 +125,12 @@ void TrackConverter::add_data(const std::vector<uint8_t>& data, const FrameInfo&
 
 void TrackConverter::add_data(const uint8_t* data, const size_t size, const FrameInfo& frameinfo)
 {
-	m_mutex.lock();
-	m_data_buffer.emplace_back(frameinfo, data, size);
-	m_mutex.unlock();
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_data_buffer.emplace_back(frameinfo, data, size);
+	}
+
+	m_data_available.notify_one();
 
 	if (!m_thread.joinable())
 	{

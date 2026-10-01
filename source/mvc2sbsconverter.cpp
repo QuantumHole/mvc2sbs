@@ -1,8 +1,6 @@
 #include "mvc2sbsconverter.h"
 
 extern "C" {
-// #include <libavcodec/avcodec.h>
-// #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
 }
 
@@ -154,8 +152,8 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264Frame& edge264frame)
 
 		// Typische H.264-Einstellungen
 		if ((av_opt_set(m_context_av->priv_data, "preset", "medium", AV_OPT_SEARCH_CHILDREN) < 0) ||
-			(av_opt_set(m_context_av->priv_data, "tune", "zerolatency", AV_OPT_SEARCH_CHILDREN) < 0) ||
-			(av_opt_set(m_context_av->priv_data, "crf", "18", AV_OPT_SEARCH_CHILDREN) < 0))
+		    (av_opt_set(m_context_av->priv_data, "tune", "zerolatency", AV_OPT_SEARCH_CHILDREN) < 0) ||
+		    (av_opt_set(m_context_av->priv_data, "crf", "18", AV_OPT_SEARCH_CHILDREN) < 0))
 		{
 			throw std::runtime_error("setting options failed");
 		}
