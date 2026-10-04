@@ -12,36 +12,30 @@ extern "C" {
 
 static const size_t MAX_NAL_SIZE = static_cast<size_t>(64) * 1024 * 1024;
 
-/** constructor.
- * @param output output stream.
- */
 MVC2SBSConverter::MVC2SBSConverter(std::ostream& output, const output_format_t format) :
-	decoder_(nullptr),
-	output_(output),
-	input_(),
-	consumed_(0),
-	finished_(false),
-	y4mStarted_(false),
-	skippedCorrupt_(0),
+	m_decoder(nullptr),
+	m_output(output),
+	m_input(),
+	m_finished(false),
+	m_y4mStarted(false),
 	m_format(format),
 	m_frame_index(0)
 {
 	const int num_threads = -1;     // automatic number of threads
 
-	decoder_ = edge264_alloc(num_threads, nullptr, nullptr, false, nullptr, nullptr, nullptr);
+	m_decoder = edge264_alloc(num_threads, nullptr, nullptr, false, nullptr, nullptr, nullptr);
 
-	if (decoder_ == nullptr)
+	if (m_decoder == nullptr)
 	{
 		throw std::runtime_error("edge264_alloc() failed");
 	}
 }
 
-/** destructor. */
 MVC2SBSConverter::~MVC2SBSConverter(void)
 {
-	if (decoder_ != nullptr)
+	if (m_decoder != nullptr)
 	{
-		edge264_free(&decoder_);
+		edge264_free(&m_decoder);
 	}
 
 	if (m_packet_av)
@@ -60,14 +54,9 @@ MVC2SBSConverter::~MVC2SBSConverter(void)
 	}
 }
 
-/** look for Annex-B start-code (00 00 01 or 00 00 00 01)
- * in input data stream.
- * @param from start index in input data.
- * @return index of start code.
- */
 size_t MVC2SBSConverter::findStartCode(const size_t from) const
 {
-	const size_t size = input_.size();
+	const size_t size = m_input.size();
 
 	if (from >= size)
 	{
@@ -76,21 +65,21 @@ size_t MVC2SBSConverter::findStartCode(const size_t from) const
 
 	for (size_t i = from; i + 2 < size; i++)
 	{
-		if ((input_[i] != 0) || (input_[i + 1] != 0))
+		if ((m_input[i] != 0) || (m_input[i + 1] != 0))
 		{
 			continue;
 		}
 
 		// 00 00 01
-		if (input_[i + 2] == 1)
+		if (m_input[i + 2] == 1)
 		{
 			return i;
 		}
 
 		// 00 00 00 01
-		if ((input_[i + 2] == 0) &&
+		if ((m_input[i + 2] == 0) &&
 		    (i + 3 < size) &&
-		    (input_[i + 3] == 1))
+		    (m_input[i + 3] == 1))
 		{
 			return i;
 		}
@@ -99,11 +88,6 @@ size_t MVC2SBSConverter::findStartCode(const size_t from) const
 	return size;
 }
 
-/** write complete frame into output stream.
- * The output format is H.264.
- * @param edge264frame completely decoded frame.
- * @return success status of writing frame into output stream.
- */
 bool MVC2SBSConverter::writeFrameH264(const Edge264Frame& edge264frame)
 {
 	const bool mvc = (edge264frame.samples_mvc[0] != nullptr);
@@ -128,7 +112,7 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264Frame& edge264frame)
 		uint32_t ts = 0;
 		uint32_t nu = 0;
 
-		edge264_get_timing(decoder_, &ts, &nu);
+		edge264_get_timing(m_decoder, &ts, &nu);
 
 		const bool haveRate = (ts != 0) && (nu != 0) && (nu < 0x40000000u);
 		const int fnum = haveRate ? static_cast<int>(ts) : 24000;
@@ -260,7 +244,7 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264Frame& edge264frame)
 			throw std::runtime_error("avcodec_receive_packet failed");
 		}
 
-		output_.write(reinterpret_cast<const char*>(m_packet_av->data), m_packet_av->size);
+		m_output.write(reinterpret_cast<const char*>(m_packet_av->data), m_packet_av->size);
 
 		av_packet_unref(m_packet_av);
 	}
@@ -268,11 +252,6 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264Frame& edge264frame)
 	return true;
 }
 
-/** write complete frame into output stream.
- * The output format is YUV4MPEG2.
- * @param frame completely decoded frame.
- * @return success status of writing frame into output stream.
- */
 bool MVC2SBSConverter::writeFrameYUV4MPEG2(const Edge264Frame& frame)
 {
 	const bool mvc = (frame.samples_mvc[0] != nullptr);
@@ -280,7 +259,7 @@ bool MVC2SBSConverter::writeFrameYUV4MPEG2(const Edge264Frame& frame)
 	// Write Y4M header exactly once.
 	// This may be repeated at any position between frames,
 	// but we only need it once.
-	if (!y4mStarted_)
+	if (!m_y4mStarted)
 	{
 		/*
 		 * Frame rate from SPS VUI:
@@ -296,7 +275,7 @@ bool MVC2SBSConverter::writeFrameYUV4MPEG2(const Edge264Frame& frame)
 		uint32_t ts = 0;
 		uint32_t nu = 0;
 
-		edge264_get_timing(decoder_, &ts, &nu);
+		edge264_get_timing(m_decoder, &ts, &nu);
 
 		const bool haveRate = (ts != 0) && (nu != 0) && (nu < 0x40000000u);
 		const int fnum = haveRate ? static_cast<int>(ts) : 24000;
@@ -305,25 +284,25 @@ bool MVC2SBSConverter::writeFrameYUV4MPEG2(const Edge264Frame& frame)
 		/* For MVC we output both views side by side. */
 		const int outputWidth = mvc ? frame.width_Y * 2 : frame.width_Y;
 
-		output_
+		m_output
 		    << "YUV4MPEG2 "
 		    << "W" << outputWidth
 		    << " H" << frame.height_Y
 		    << " F" << fnum << ":" << fden
 		    << " Ip A1:1 C420mpeg2\n";
 
-		if (!output_)
+		if (!m_output)
 		{
 			return false;
 		}
 
-		y4mStarted_ = true;
+		m_y4mStarted = true;
 	}
 
 	// Frame header
-	output_ << "FRAME\n";
+	m_output << "FRAME\n";
 
-	if (!output_)
+	if (!m_output)
 	{
 		return false;
 	}
@@ -332,15 +311,15 @@ bool MVC2SBSConverter::writeFrameYUV4MPEG2(const Edge264Frame& frame)
 	for (int y = 0; y < frame.height_Y; y++)
 	{
 		const uint8_t* left = frame.samples[0] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_Y);
-		output_.write(reinterpret_cast<const char*>(left), static_cast<std::streamsize>(frame.width_Y));
+		m_output.write(reinterpret_cast<const char*>(left), static_cast<std::streamsize>(frame.width_Y));
 
 		if (mvc)
 		{
 			const uint8_t* right = frame.samples_mvc[0] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_Y);
-			output_.write(reinterpret_cast<const char*>(right), static_cast<std::streamsize>(frame.width_Y));
+			m_output.write(reinterpret_cast<const char*>(right), static_cast<std::streamsize>(frame.width_Y));
 		}
 
-		if (!output_)
+		if (!m_output)
 		{
 			return false;
 		}
@@ -350,15 +329,15 @@ bool MVC2SBSConverter::writeFrameYUV4MPEG2(const Edge264Frame& frame)
 	for (int y = 0; y < frame.height_C; y++)
 	{
 		const uint8_t* left = frame.samples[1] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_C);
-		output_.write(reinterpret_cast<const char*>(left), static_cast<std::streamsize>(frame.width_C));
+		m_output.write(reinterpret_cast<const char*>(left), static_cast<std::streamsize>(frame.width_C));
 
 		if (mvc)
 		{
 			const uint8_t* right = frame.samples_mvc[1] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_C);
-			output_.write(reinterpret_cast<const char*>(right), static_cast<std::streamsize>(frame.width_C));
+			m_output.write(reinterpret_cast<const char*>(right), static_cast<std::streamsize>(frame.width_C));
 		}
 
-		if (!output_)
+		if (!m_output)
 		{
 			return false;
 		}
@@ -368,15 +347,15 @@ bool MVC2SBSConverter::writeFrameYUV4MPEG2(const Edge264Frame& frame)
 	for (int y = 0; y < frame.height_C; y++)
 	{
 		const uint8_t* left = frame.samples[2] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_C);
-		output_.write(reinterpret_cast<const char*>(left), static_cast<std::streamsize>(frame.width_C));
+		m_output.write(reinterpret_cast<const char*>(left), static_cast<std::streamsize>(frame.width_C));
 
 		if (mvc)
 		{
 			const uint8_t* right = frame.samples_mvc[2] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_C);
-			output_.write(reinterpret_cast<const char*>(right), static_cast<std::streamsize>(frame.width_C));
+			m_output.write(reinterpret_cast<const char*>(right), static_cast<std::streamsize>(frame.width_C));
 		}
 
-		if (!output_)
+		if (!m_output)
 		{
 			return false;
 		}
@@ -385,14 +364,11 @@ bool MVC2SBSConverter::writeFrameYUV4MPEG2(const Edge264Frame& frame)
 	return true;
 }
 
-/** receive decoded frames from edge264.
- * @return success status of processing received frames.
- */
 bool MVC2SBSConverter::drainFrames(void)
 {
 	Edge264Frame frame;
 
-	while (edge264_get_frame(decoder_, &frame, 0) == 0)
+	while (edge264_get_frame(m_decoder, &frame, 0) == 0)
 	{
 		switch (m_format)
 		{
@@ -418,11 +394,6 @@ bool MVC2SBSConverter::drainFrames(void)
 	return true;
 }
 
-/** decode NAL found in input buffer.
- * @param begin start index of NAL in input buffer.
- * @param end end index of NAL in input buffer.
- * @return flag indicating success or failure of decoding.
- */
 bool MVC2SBSConverter::decodeNAL(const size_t begin, const size_t end)
 {
 	if (begin >= end)
@@ -430,13 +401,13 @@ bool MVC2SBSConverter::decodeNAL(const size_t begin, const size_t end)
 		return false;
 	}
 
-	const uint8_t* nal = input_.data() + begin;
-	const uint8_t* nalEnd = input_.data() + end;
+	const uint8_t* nal = m_input.data() + begin;
+	const uint8_t* nalEnd = m_input.data() + end;
 	unsigned stuck = 0;
 
 	while (true)
 	{
-		const int res = edge264_decode_NAL(decoder_, nal, nalEnd, nullptr, nullptr);
+		const int res = edge264_decode_NAL(m_decoder, nal, nalEnd, nullptr, nullptr);
 		const bool framesOk = drainFrames();
 
 		if (!framesOk)
@@ -471,17 +442,7 @@ bool MVC2SBSConverter::decodeNAL(const size_t begin, const size_t end)
 
 		if (res == EBADMSG)
 		{
-			// A corrupt NAL should not stop the complete stream.
-			//
-			// The NAL itself has already been passed to edge264 and will
-			// not be retried. Continue with the next NAL.
-			skippedCorrupt_++;
-
-			if (skippedCorrupt_ <= 32)
-			{
-				// std::cerr << "edge264: skipped corrupt NAL unit" << std::endl;
-			}
-
+			// A corrupt NAL. Continue with the next NAL.
 			return true;
 		}
 
@@ -490,18 +451,11 @@ bool MVC2SBSConverter::decodeNAL(const size_t begin, const size_t end)
 	}
 }
 
-/** process buffered Annex-B input in input buffer.
- * Ignores all data before the first start code.
- * Decode complete NAL, if two start codes have been found.
- * @param endOfStream flag for the end of stream,
- * indicating no more data to be received.
- * @return flag indicating that all data has been processed.
- */
 bool MVC2SBSConverter::processInput(const bool endOfStream)
 {
 	while (true)
 	{
-		const size_t size = input_.size();
+		const size_t size = m_input.size();
 
 		if (size == 0)
 		{
@@ -521,13 +475,13 @@ bool MVC2SBSConverter::processInput(const bool endOfStream)
 				// not a complete H.264 Annex-B stream.
 				for (size_t i = 0; i < size; i++)
 				{
-					if (input_[i] != 0)
+					if (m_input[i] != 0)
 					{
 						return false;
 					}
 				}
 
-				input_.clear();
+				m_input.clear();
 				return true;
 			}
 
@@ -543,13 +497,13 @@ bool MVC2SBSConverter::processInput(const bool endOfStream)
 			{
 				for (size_t i = 0; i < size - 3; ++i)
 				{
-					if (input_[i] != 0)
+					if (m_input[i] != 0)
 					{
 						return false;
 					}
 				}
 
-				input_.erase(input_.begin(), input_.begin() + static_cast<std::ptrdiff_t>(size - 3));
+				m_input.erase(m_input.begin(), m_input.begin() + static_cast<std::ptrdiff_t>(size - 3));
 			}
 
 			return true;
@@ -558,14 +512,14 @@ bool MVC2SBSConverter::processInput(const bool endOfStream)
 		// Only zero bytes may occur before the first start code.
 		for (size_t i = 0; i < start; ++i)
 		{
-			if (input_[i] != 0)
+			if (m_input[i] != 0)
 			{
 				return false;
 			}
 		}
 
 		// Determine start-code length.
-		const size_t startCodeSize = ((start + 2 < size) && (input_[start + 2] == 1)) ? 3 : 4;
+		const size_t startCodeSize = ((start + 2 < size) && (m_input[start + 2] == 1)) ? 3 : 4;
 		const size_t nalBegin = start + startCodeSize;
 
 		// Start code without NAL data.
@@ -579,7 +533,7 @@ bool MVC2SBSConverter::processInput(const bool endOfStream)
 			// Keep the start code and wait for another packet.
 			if (start != 0)
 			{
-				input_.erase(input_.begin(), input_.begin() + static_cast<std::ptrdiff_t>(start));
+				m_input.erase(m_input.begin(), m_input.begin() + static_cast<std::ptrdiff_t>(start));
 			}
 
 			return true;
@@ -601,7 +555,7 @@ bool MVC2SBSConverter::processInput(const bool endOfStream)
 				// Keep everything starting at the current start code.
 				if (start != 0)
 				{
-					input_.erase(input_.begin(), input_.begin() + static_cast<std::ptrdiff_t>(start));
+					m_input.erase(m_input.begin(), m_input.begin() + static_cast<std::ptrdiff_t>(start));
 				}
 
 				return true;
@@ -618,8 +572,7 @@ bool MVC2SBSConverter::processInput(const bool endOfStream)
 				return false;
 			}
 
-			input_.clear();
-			consumed_ = 0;
+			m_input.clear();
 
 			return true;
 		}
@@ -642,19 +595,13 @@ bool MVC2SBSConverter::processInput(const bool endOfStream)
 		}
 
 		// Keep the next start code for the next iteration.
-		input_.erase(input_.begin(), input_.begin() + static_cast<std::ptrdiff_t>(nextStart));
-
-		consumed_ = 0;
+		m_input.erase(m_input.begin(), m_input.begin() + static_cast<std::ptrdiff_t>(nextStart));
 	}
 }
 
-/** put a packet of data into input stream.
- * @param packet input data packet.
- * @return flag for successful insertion.
- */
 bool MVC2SBSConverter::feed(const std::vector<uint8_t>& packet)
 {
-	if (finished_)
+	if (m_finished)
 	{
 		return false;
 	}
@@ -665,19 +612,16 @@ bool MVC2SBSConverter::feed(const std::vector<uint8_t>& packet)
 	}
 
 	// Avoid an unreasonable amount of buffered data.
-	if (input_.size() > MAX_NAL_SIZE + 4 - packet.size())
+	if (m_input.size() > MAX_NAL_SIZE + 4 - packet.size())
 	{
 		return false;
 	}
 
-	input_.insert(input_.end(), packet.begin(), packet.end());
+	m_input.insert(m_input.end(), packet.begin(), packet.end());
 
 	return processInput(false);
 }
 
-/** fetch remaining frames.
- * @return success status of flush operation.
- */
 bool MVC2SBSConverter::flush_yuv4mpeg2(void)
 {
 	/* Force edge264 to expose frames which are still delayed internally. */
@@ -687,7 +631,7 @@ bool MVC2SBSConverter::flush_yuv4mpeg2(void)
 
 	for (unsigned i = 0; i < 256; i++)
 	{
-		const int res = edge264_decode_NAL(decoder_, begin, end, nullptr, nullptr);
+		const int res = edge264_decode_NAL(m_decoder, begin, end, nullptr, nullptr);
 
 		if (!drainFrames())
 		{
@@ -696,7 +640,8 @@ bool MVC2SBSConverter::flush_yuv4mpeg2(void)
 
 		if ((res == 0) ||
 		    (res == ENOBUFS) ||
-		    (res == ENOTSUP))
+		    (res == ENOTSUP) ||
+			(res == EBADMSG))
 		{
 			continue;
 		}
@@ -704,16 +649,11 @@ bool MVC2SBSConverter::flush_yuv4mpeg2(void)
 		{
 			break;
 		}
-		else if (res == EBADMSG)
-		{
-			skippedCorrupt_++;
-			continue;
-		}
 
 		return false;
 	}
 
-	edge264_flush(decoder_);
+	edge264_flush(m_decoder);
 
 	return true;
 }
@@ -741,19 +681,16 @@ bool MVC2SBSConverter::flush_h264(void)
 			throw std::runtime_error("avcodec_receive_packet (flush) failed");
 		}
 
-		output_.write(reinterpret_cast<const char*>(m_packet_av->data), m_packet_av->size);
+		m_output.write(reinterpret_cast<const char*>(m_packet_av->data), m_packet_av->size);
 
 		av_packet_unref(m_packet_av);
 	}
 	return true;
 }
 
-/** finish decoding and consume all remaining frames.
- * @return success status of decoding the last frames.
- */
 bool MVC2SBSConverter::finish(void)
 {
-	if (finished_)
+	if (m_finished)
 	{
 		return true;
 	}
@@ -769,17 +706,12 @@ bool MVC2SBSConverter::finish(void)
 		return false;
 	}
 
-	finished_ = true;
+	m_finished = true;
 
-	if (!input_.empty())
+	if (!m_input.empty())
 	{
 		return false;
 	}
 
-	if (skippedCorrupt_ != 0)
-	{
-		// optional stderr logging
-	}
-
-	return output_.good();
+	return m_output.good();
 }

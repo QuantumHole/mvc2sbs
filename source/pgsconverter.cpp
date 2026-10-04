@@ -184,7 +184,7 @@ PGSConverter::~PGSConverter(void)
 
 const std::string PGSConverter::output_extension(void) const
 {
-	return "." + m_track_info.language + ".sup";
+	return "." + track_info().language + ".sup";
 }
 
 void PGSConverter::append_ocr(const PGSStream::PGSFrame& frame)
@@ -193,13 +193,13 @@ void PGSConverter::append_ocr(const PGSStream::PGSFrame& frame)
 
 	if (text.empty())
 	{
-		const std::string filename = "unreadable." + m_track_info.language + "/" + timestamp(frame.time.s) + "-" + timestamp(frame.time.t) + ".png";
+		const std::string filename = "unreadable." + track_info().language + "/" + timestamp(frame.time.s) + "-" + timestamp(frame.time.t) + ".png";
 		saveRGBA32AsPNG(filename, frame.pixels, frame.size.x, frame.size.y);
 	}
 
 	if (m_save_images)
 	{
-		const std::string filename = "subtitles." + m_track_info.language + "/" + timestamp(frame.time.s) + "-" + timestamp(frame.time.t) + ".png";
+		const std::string filename = "subtitles." + track_info().language + "/" + timestamp(frame.time.s) + "-" + timestamp(frame.time.t) + ".png";
 		saveRGBA32AsPNG(filename, frame.pixels, frame.size.x, frame.size.y);
 	}
 
@@ -217,7 +217,7 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 {
 	if (data.empty())
 	{
-		std::cerr << "Leerer PGS-Frame in language " << m_track_info.language << std::endl;
+		std::cerr << "Leerer PGS-Frame in language " << track_info().language << std::endl;
 		return 0;
 	}
 

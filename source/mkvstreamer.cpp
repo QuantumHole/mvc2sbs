@@ -370,7 +370,6 @@ void MKVStreamer::readBlock(
 	fflush(stdout);
 }
 
-/** process block group and iterate over blocks. */
 void MKVStreamer::streamBlockGroup(
 	libebml::EbmlStream& stream,
 	const uint64_t groupEnd,
@@ -457,7 +456,6 @@ void MKVStreamer::streamBlockGroup(
 	}
 }
 
-/** processes clusters, iterates over blocks. */
 void MKVStreamer::streamCluster(
 	libebml::EbmlStream& stream,
 	const uint64_t clusterEnd,
@@ -616,10 +614,6 @@ void MKVStreamer::streamCluster(
 	}
 }
 
-/** reads track list.
- * associates tracks to TrackConverters
- * before iterating over Clusters and Blocks.
- */
 void MKVStreamer::readTracks(libmatroska::KaxTracks& tracksElement, libebml::EbmlStream& stream)
 {
 	int upperLevel = 0;

@@ -13,9 +13,14 @@
 #include <deque>
 #include <condition_variable>
 
+/** Abstract class for receiving data of one MKV track and processing it in
+ * arbitrary ways.
+ */
 class TrackConverter
 {
 	public:
+
+		/** meta data about the track to be prcessed. */
 		struct TrackInfo
 		{
 			uint64_t trackNumber = 0;
@@ -29,6 +34,7 @@ class TrackConverter
 			std::string language = "und";   // undefined
 		};
 
+		/** metadata about a frame or block of frames, mostly timing information. */
 		struct FrameInfo
 		{
 			uint64_t pts = 0;           // nanoseconds
@@ -38,23 +44,34 @@ class TrackConverter
 			bool keyframe = false;
 		};
 
+		/** container for block data and meta data. */
 		struct BlockData
 		{
-			FrameInfo info;
-			std::vector<uint8_t> data;  // block data
+			FrameInfo info;             ///< meta data about the current block with one or more frames (cf. lacing).
+			std::vector<uint8_t> data;  ///< block data read directly from the track
 
+			/** default constructor. */
 			BlockData(void) :
 				info(),
 				data()
 			{
 			}
 
+			/** constructor for vector data.
+			 * @param i frame information.
+			 * @param d block data for one or more frames.
+			 */
 			BlockData(const FrameInfo& i, const std::vector<uint8_t>& d) :
 				info(i),
 				data(d)
 			{
 			}
 
+			/** constructor for classic pointer and size data.
+			 * @param i frame information.
+			 * @param d pointer to the block data for one or more frames.
+			 * @param size length of the block data.
+			 */
 			BlockData(const FrameInfo& i, const uint8_t * d, const size_t size) :
 				info(i),
 				data(d, d + size)
@@ -62,32 +79,81 @@ class TrackConverter
 			}
 		};
 
+		/** constructor.
+		 * @param input_file_name path to input file.
+		 * @param trackinfo information about the assigned track.
+		 */
 		explicit TrackConverter(const std::string& input_file_name, const TrackInfo& trackinfo);
+
+		/** destructor. */
 		virtual ~TrackConverter(void);
+
+		/** retrieve the track information.
+		 * @return reference to the track information.
+		 */
 		const TrackInfo& track_info(void) const;
+
+		/** add a bunch of data bytes.
+		 * @param data put data bytes into input queue.
+		 * @param frameinfo associated meta data for the queued block of data.
+		 */
 		void add_data(const std::vector<uint8_t>& data, const FrameInfo& frameinfo);
+
+		/** add a bunch of data bytes.
+		 * @param data pointer to data bytes for the input queue.
+		 * @param size number of data bytes to be put into input queue.
+		 * @param frameinfo associated meta data for the queued block of data.
+		 */
 		void add_data(const uint8_t* data, const size_t size, const FrameInfo& frameinfo);
 
 	protected:
-		const TrackInfo m_track_info;
 
+		/** retrieve the output stream.
+		 * @return output stream of the current converter.
+		 */
 		std::ofstream& output_stream(void);
+
+		/** write bytes to output stream.
+		 * @param data pointer to output data.
+		 * @param size number of bytes for the output stream.
+		 */
 		void write(const uint8_t* data, const size_t size);
+
+		/** file extension for the generated output file.
+		 * @return file extension for the generated output file.
+		 */
 		virtual const std::string output_extension(void) const = 0;
+
+		/** process packets of data.
+		 * @param data one bunch of data to be processed. Data may be cut at arbitrary positions into packets.
+		 * @param info meta data for the current frame, that may be contained in the current packet of data.
+		 * @return number of processed bytes. This must be the size of data, everything else is considered an error.
+		 */
 		virtual size_t process_data(const std::vector<uint8_t>& data, const FrameInfo& info) = 0;
 
 	private:
-		const std::string m_input_file_name;
+		const std::string m_input_file_name;       ///< file name of the input file, used to derive the output file name.
+		const TrackInfo m_track_info;              ///< track meta data.
+		std::ofstream m_output;                    ///< output stream.
+		std::deque<BlockData> m_data_buffer;       ///< queue for the read input packets from input file.
+		std::mutex m_mutex;                        ///< mutex to syncronize communication between thread and main program.
+		std::thread m_thread;                      ///< thread variable for the thread running process_data().
+		std::condition_variable m_data_available;  ///< condition variable for signalling when more input data for the thread is available.
+		bool m_keep_running;                       ///< flag for stopping and exiting the thread.
 
-		std::ofstream m_output;
-		std::deque<BlockData> m_data_buffer;
-		std::mutex m_mutex;
-		std::thread m_thread;
-		std::condition_variable m_data_available;
-		bool m_keep_running;
-
+		/** generate a unique output file name from input meta data.
+		 * @return file name for the output stream target.
+		 */
 		std::string output_file_name(void) const;
+
+		/** thread loop for the converter.
+		 * This loop regularly checks the input queue and calls process_data().
+		 */
 		void run_loop(void);
+
+		/** static method to start the thread loop for the converter.
+		 * @param instance instance for which to run the thread loop.
+		 */
 		static void runner(TrackConverter* instance);
 };
 

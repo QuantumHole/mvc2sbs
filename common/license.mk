@@ -13,5 +13,5 @@ license-annotate:
 	reuse annotate --merge-copyrights --year $(shell date "+%Y") --copyright $(COPYRIGHT) --license $(LICENSE_CODE) Makefile README.md .gitignore common/*.mk
 	reuse annotate --merge-copyrights --year $(shell date "+%Y") --copyright $(COPYRIGHT) --license $(LICENSE_CODE) --style cpp source/* source/*
 	reuse annotate --merge-copyrights --year $(shell date "+%Y") --copyright $(COPYRIGHT) --license $(LICENSE_CODE) --style python common/*.cfg
-	# reuse annotate --merge-copyrights --year $(shell date "+%Y") --copyright $(COPYRIGHT) --license $(LICENSE_IMAGE) images/*.svg
+	reuse annotate --merge-copyrights --year $(shell date "+%Y") --copyright $(COPYRIGHT) --license $(LICENSE_IMAGE) images/*.svg
 	-reuse download $(LICENSE_CODE) $(LICENSE_IMAGE)

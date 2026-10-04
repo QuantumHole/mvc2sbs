@@ -18,60 +18,117 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 }
 
+/** converts video from MVC format to side-by-side (SBS) format.
+ * If the output format is chosen as H.264, the video stream is
+ * recompressed using libavcodec from ffmpeg.
+ */
 class MVC2SBSConverter
 {
 	public:
+		/** possible output formats. */
 		typedef enum
 		{
-			FORMAT_YUV4MPEG2,
-			FORMAT_H264
+			FORMAT_YUV4MPEG2,   ///< YUV4MPEG2 stream of uncompressed frames.
+			FORMAT_H264         ///< H.264 stream of raw frames.
 		}
 		output_format_t;
+
+		/** constructor.
+		 * @param output output stream for converted data.
+		 * @param format output format for the converted data.
+		 */
 		explicit MVC2SBSConverter(std::ostream& output, const output_format_t format);
+
+		/** destructor. */
 		~MVC2SBSConverter(void);
 
+		/** feed a packet of input data into the queue.
+		 * @param packet bunch of input data.
+		 * @return success status of queuing the packet.
+		 */
 		bool feed(const std::vector<uint8_t>& packet);
+
+		/** process all remaining data in input queue.
+		 * @return success status of processing the data.
+		 */
 		bool finish(void);
 
 	private:
-		MVC2SBSConverter(const MVC2SBSConverter&);
-		MVC2SBSConverter& operator=(const MVC2SBSConverter&);
+		/** private copy constructor.
+		 * @param obj template object.
+		 */
+		MVC2SBSConverter(const MVC2SBSConverter& obj);
 
-		// NAL parsing
+		/** private assignment operator.
+		 * @param obj template object.
+		 * @return copied object.
+		 */
+		MVC2SBSConverter& operator=(const MVC2SBSConverter& obj);
+
+		/** process buffered Annex-B input in input buffer.
+		* Ignores all data before the first start code.
+		* Decode complete NAL, if two start codes have been found.
+		* @param endOfStream flag for the end of stream,
+		* indicating no more data to be received.
+		* @return flag indicating that all data has been processed.
+		*/
 		bool processInput(const bool endOfStream);
+		
+		/** look for Annex-B start-code (00 00 01 or 00 00 00 01)
+		* in input data stream.
+		* @param from start index in input data.
+		* @return index of start code.
+		*/
 		size_t findStartCode(const size_t from) const;
 
-		// edge264
+		/** decode NAL found in input buffer.
+		* @param begin start index of NAL in input buffer.
+		* @param end end index of NAL in input buffer.
+		* @return flag indicating success or failure of decoding.
+		*/
 		bool decodeNAL(const size_t begin, const size_t end);
+
+		/** receive decoded frames from edge264.
+		* @return success status of processing received frames.
+		*/
 		bool drainFrames(void);
+
+		/** fetch remaining frames.
+		* @return success status of flush operation.
+		*/
 		bool flush_yuv4mpeg2(void);
+
+		/** fetch remaining frames.
+		* @return success status of flush operation.
+		*/
 		bool flush_h264(void);
 
-		// output
-		bool writeFrameYUV4MPEG2(const Edge264Frame& frame);
-		bool writeFrameH264(const Edge264Frame& frame);
+		/** write complete frame into output stream.
+		* The output format is YUV4MPEG2.
+		* @param edge264frame completely decoded frame.
+		* @return success status of writing frame into output stream.
+		*/
+		bool writeFrameYUV4MPEG2(const Edge264Frame& edge264frame);
 
-		Edge264Decoder* decoder_;
-		std::ostream& output_;
+		/** write complete frame into output stream.
+		* The output format is H.264.
+		* @param edge264frame completely decoded frame.
+		* @return success status of writing frame into output stream.
+		*/
+		bool writeFrameH264(const Edge264Frame& edge264frame);
 
-		std::vector<uint8_t> input_;
-		size_t consumed_;
-
-		bool finished_;
-
-		// Y4M
-		bool y4mStarted_;
-
-		// Number of corrupt NAL units skipped.
-		unsigned skippedCorrupt_;
-
-		const output_format_t m_format;
+		Edge264Decoder* m_decoder;         ///< external decoder for MVC frames
+		std::ostream& m_output;            ///< output stream for compressed or uncompressed frames.
+		std::vector<uint8_t> m_input;      ///< input buffer for data passed into feed().
+		bool m_finished;                   ///< flag that finish() has been called.
+		bool m_y4mStarted;                 ///< flag that frame information has been written.
+		const output_format_t m_format;    ///< output format.
 
 		// libAV interface
-		AVCodecContext* m_context_av = nullptr;
-		AVFrame* m_frame_av = nullptr;
-		AVPacket* m_packet_av = nullptr;
-		size_t m_frame_index;
+		AVCodecContext* m_context_av = nullptr;  ///< AVCodec context.
+		AVFrame* m_frame_av = nullptr;           ///< AVFrame buffer.
+		AVPacket* m_packet_av = nullptr;         ///< AVPacket buffer.
+		size_t m_frame_index;                    ///< frame counter for timing information.
 };
 
 #endif

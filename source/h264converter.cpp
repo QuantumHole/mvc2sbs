@@ -46,7 +46,7 @@ H264Converter::~H264Converter(void)
 
 const std::string H264Converter::output_extension(void) const
 {
-	return "." + m_track_info.language + ".264";
+	return "." + track_info().language + ".264";
 }
 
 void H264Converter::write_start_code(std::vector<uint8_t>& data)
@@ -315,18 +315,14 @@ size_t H264Converter::process_data(const std::vector<uint8_t>& data, const Frame
 	if (!m_codec_private_written)
 	{
 		// Normale AVC SPS/PPS.
-		if (!write_codec_private(
-				m_track_info.codecPrivate,
-				output_data))
+		if (!write_codec_private(track_info().codecPrivate, output_data))
 		{
 			std::cerr << "H264: invalid AVC codec private data\n";
 			return 0;
 		}
 
 		// MVC SPS/PPS einschließlich Subset-SPS.
-		if (!write_mvc_codec_private(
-				m_track_info.codecPrivate,
-				output_data))
+		if (!write_mvc_codec_private(track_info().codecPrivate, output_data))
 		{
 			std::cerr << "H264: invalid MVC codec private data\n";
 			return 0;

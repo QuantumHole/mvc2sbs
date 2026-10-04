@@ -365,10 +365,6 @@ void PGSStream::reset(void)
 	m_composition_id = 0;
 }
 
-/** Read presentation composition segement.
- * Translate defined objects into frames.
- * Frame hide time is set, when the next empty composition object is received.
- */
 void PGSStream::readPCS(
 	const uint32_t pts,
 	const std::vector<uint8_t>& p)
@@ -437,7 +433,6 @@ void PGSStream::readPCS(
 	}
 }
 
-/** read palette definition segment. */
 void PGSStream::readPDS(const std::vector<uint8_t>& p)
 {
 	// PDS:
@@ -466,7 +461,6 @@ void PGSStream::readPDS(const std::vector<uint8_t>& p)
 	m_palettes[paletteId] = std::move(palette);
 }
 
-/** read Object Definition Segment. */
 void PGSStream::readODS(const std::vector<uint8_t>& p)
 {
 	// ODS:
@@ -664,7 +658,6 @@ void PGSStream::parse(void)
 	}
 }
 
-/** convert RGBA pixels of frame into indexed array with palette. */
 std::vector<uint8_t> PGSStream::makeIndexedPixels(
 	const PGSFrame& frame,
 	Palette& palette) const
@@ -694,7 +687,6 @@ std::vector<uint8_t> PGSStream::makeIndexedPixels(
 	return indexed;
 }
 
-/** write general PGS segment into buffer. */
 void PGSStream::writeSegment(
 	std::vector<uint8_t>& buffer,
 	const uint32_t pts,
@@ -721,14 +713,13 @@ void PGSStream::writeSegment(
 	buffer.insert(buffer.end(), payload.begin(), payload.end());
 }
 
-/** write Presentation Composition Segment. */
 void PGSStream::writePCS(
 	std::vector<uint8_t>& buffer,
 	const PGSFrame& frame,
 	const uint16_t objectId,
 	const uint32_t pts,
 	const uint16_t compositionNumber,
-	const uint8_t compositionState,
+	const composition_t compositionState,
 	const bool paletteOnlyUpdate,
 	const uint8_t paletteId,
 	const bool showObject) const
@@ -773,7 +764,6 @@ void PGSStream::writePCS(
 	writeSegment(buffer, pts, 0, PCS, payload);
 }
 
-/** write Window Definition Segment. */
 void PGSStream::writeWDS(
 	std::vector<uint8_t>& buffer,
 	const PGSFrame& frame,
@@ -796,7 +786,6 @@ void PGSStream::writeWDS(
 	writeSegment(buffer, pts, 0, WDS, payload);
 }
 
-/** write Palette Definition Segment. */
 void PGSStream::writePDS(
 	std::vector<uint8_t>& buffer,
 	const Palette& palette,
@@ -825,7 +814,6 @@ void PGSStream::writePDS(
 	writeSegment(buffer, pts, 0, PDS, payload);
 }
 
-/** write Object Definition Segment containing an RLE encoded frame. */
 void PGSStream::writeODS(
 	std::vector<uint8_t>& buffer,
 	const uint16_t objectId,
@@ -902,7 +890,6 @@ void PGSStream::writeODS(
 	}
 }
 
-/** write display set. */
 void PGSStream::writeFrameDisplaySet(
 	std::vector<uint8_t>& buffer,
 	const PGSFrame& frame,
@@ -977,7 +964,7 @@ std::vector<uint8_t> PGSStream::saveFrame(const PGSFrame& frame)
 
 	const uint32_t startPts = toPts(frame.time.s);
 	const uint32_t endPts   = toPts(frame.time.t);
-	const uint8_t compositionState = (m_composition_id == 0) ? COMPOSITION_EPOCH_START : COMPOSITION_NORMAL;
+	const composition_t compositionState = (m_composition_id == 0) ? COMPOSITION_EPOCH_START : COMPOSITION_NORMAL;
 
 	Palette palette;
 	const std::vector<uint8_t> indexed = makeIndexedPixels(frame, palette);

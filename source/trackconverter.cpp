@@ -9,8 +9,8 @@
 #include <sstream>
 
 TrackConverter::TrackConverter(const std::string& input_file_name, const TrackInfo& track_info) :
-	m_track_info(track_info),
 	m_input_file_name(input_file_name),
+	m_track_info(track_info),
 	m_output(),
 	m_data_buffer(),
 	m_mutex(),
