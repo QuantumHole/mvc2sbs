@@ -67,6 +67,7 @@ class TrackConverter
 	protected:
 		const TrackInfo m_track_info;
 
+		std::ofstream& output_stream(void);
 		void write(const uint8_t* data, const size_t size);
 		virtual const std::string output_extension(void) const = 0;
 		virtual size_t process_data(const std::vector<uint8_t>& data, const FrameInfo& info) = 0;

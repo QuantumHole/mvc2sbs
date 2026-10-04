@@ -4,8 +4,10 @@ SPDX-FileCopyrightText: 2026 QuantumHole <QuantumHole@github.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-mkvstreams is a tool for extracting PGS subtitles from MKV files.
-Subtitles are saved as PGS/SUP files.
+mkvmvc2sbs is a tool for converting MKV files with MVC video into SBS format.
+The video stream is converted from MVC to SBS format. This doubles the video dimension horizontally.
+Subtitles in PGS/SUP format are extracted and saved as PGS/SUP files.
+As PGS/SUP is an image format, their horizontal dimensions are doubles as well.
 Additionally, subtitles in supported languages are converted into
 text via optical character recognition (OCR).
 Recognized subtitles are saved in SubRip (SRT) format.
@@ -17,6 +19,7 @@ Recognized subtitles are saved in SubRip (SRT) format.
 * [libmatroska](https://github.com/Matroska-Org/libmatroska)
 * [Tesseract](https://tesseractocr.org/)
 * [libpng](https://www.libpng.org/pub/png/libpng.html)
+* [libavcodec libavutil](https://ffmpeg.org)
 
 ## Build Dependencies
 
@@ -38,6 +41,8 @@ Prerequesites can be installed via the package manager of your distribution, e.g
 ## Compilation
 
 `make -j all`
+For selection of compiler, the project can also be built with
+`make -j gnu` (GCC) or `make -j llvm` (clang)
 
 # Contribution
 
@@ -51,3 +56,4 @@ Some useful resources for learning about the topics covered in this project.
 * Matroska file format [Matroska Media Container](https://www.matroska.org)
 * PGS explanation [Presentation Graphics Stream](https://blog.thescorpius.com/index.php/2017/07/15/presentation-graphic-stream-sup-files-bluray-subtitle-format/)
 * SRT explanation [SubRip Subtitles](https://en.wikipedia.org/wiki/SubRip)
+* Complete solution to record, convert and stream audio and video [FFmpeg](https://ffmpeg.org/)

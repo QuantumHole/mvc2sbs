@@ -138,6 +138,12 @@ void TrackConverter::add_data(const uint8_t* data, const size_t size, const Fram
 	}
 }
 
+std::ofstream& TrackConverter::output_stream(void)
+{
+	return m_output;
+}
+
+
 void TrackConverter::write(const uint8_t* data, const size_t size)
 {
 	m_output.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));

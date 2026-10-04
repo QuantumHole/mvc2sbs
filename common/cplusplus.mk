@@ -89,7 +89,6 @@ else ifeq ($(COMPILER), gnu)
 		-Wduplicated-branches \
 		-Wflex-array-member-not-at-end \
 		-Winit-self \
-		-Winline \
 		-Winvalid-pch \
 		-Winvalid-utf8 \
 		-Wmissing-include-dirs \
@@ -100,12 +99,13 @@ else ifeq ($(COMPILER), gnu)
 		-Wsuggest-attribute=cold \
 		-Wsuggest-attribute=format \
 		-Wsuggest-attribute=malloc \
-		-Wsuggest-attribute=returns_nonnull \
 		-Wsuggest-final-methods \
 		-Wsuggest-final-types \
 		-Wtrivial-auto-var-init \
 		-Wunused-macros \
 		-Wvector-operation-performance \
+		# -Winline \
+		# -Wsuggest-attribute=returns_nonnull \
 		# -Wabi \                 # only sensible as e.g. -Wabi=11
 		# -Wabi-tag \             # mixing ABI version is required in most cases.
 		# -Waggregate-return \    # no return of e.g. vectors

@@ -15,7 +15,7 @@ H264Converter::H264Converter(
 	TrackConverter(input_file_name, info),
 	m_nal_length_size(0),
 	m_codec_private_written(false),
-	m_mvc2sbs(std::cout, MVC2SBSConverter::FORMAT_H264)
+	m_mvc2sbs(output_stream(), MVC2SBSConverter::FORMAT_H264)
 {
 	if (info.codecPrivate.size() < 5)
 	{
