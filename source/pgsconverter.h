@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 QuantumHole <QuantumHole@github.com>
+//
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 #ifndef PGSCONVERTER_H
 #define PGSCONVERTER_H
 

@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2025, 2026 QuantumHole <QuantumHole@github.com>
 #
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-2.0-or-later
 
-LICENSE_CODE = "GPL-3.0-or-later"
+LICENSE_CODE = "GPL-2.0-or-later"
 LICENSE_IMAGE = "CC-BY-SA-3.0-DE"
 COPYRIGHT = "QuantumHole <QuantumHole@github.com>"
 

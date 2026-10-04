@@ -1,7 +1,7 @@
 <!--
 SPDX-FileCopyrightText: 2026 QuantumHole <QuantumHole@github.com>
 
-SPDX-License-Identifier: GPL-3.0-or-later
+SPDX-License-Identifier: GPL-2.0-or-later
 -->
 
 mkvmvc2sbs is a tool for converting MKV files with MVC video into SBS format.
