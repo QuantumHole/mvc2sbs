@@ -5,7 +5,7 @@
 #ifndef MVC2SBSCONVERTER_H
 #define MVC2SBSCONVERTER_H
 
-#include "edge264.h"
+#include "edge264mvc.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -108,16 +108,16 @@ class MVC2SBSConverter
 		* @param edge264frame completely decoded frame.
 		* @return success status of writing frame into output stream.
 		*/
-		bool writeFrameYUV4MPEG2(const Edge264Frame& edge264frame);
+		bool writeFrameYUV4MPEG2(const Edge264MvcFrame& edge264frame);
 
 		/** write complete frame into output stream.
 		* The output format is H.264.
 		* @param edge264frame completely decoded frame.
 		* @return success status of writing frame into output stream.
 		*/
-		bool writeFrameH264(const Edge264Frame& edge264frame);
+		bool writeFrameH264(const Edge264MvcFrame& edge264frame);
 
-		Edge264Decoder* m_decoder;         ///< external decoder for MVC frames
+		Edge264MvcDecoder* m_decoder;         ///< external decoder for MVC frames
 		std::ostream& m_output;            ///< output stream for compressed or uncompressed frames.
 		std::vector<uint8_t> m_input;      ///< input buffer for data passed into feed().
 		bool m_finished;                   ///< flag that finish() has been called.

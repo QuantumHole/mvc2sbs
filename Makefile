@@ -14,8 +14,8 @@ TARGET   := mkvmvc2sbs
 
 EDGE264_DIR := edge264-mvc
 EDGE264_OBJECTS := \
-	$(EDGE264_DIR)/edge264.o \
-	$(EDGE264_DIR)/edge264_headers_log.o \
+	$(EDGE264_DIR)/edge264mvc.o \
+	$(EDGE264_DIR)/edge264mvc_headers_log.o \
 
 OBJECTS := \
 	$(BUILD_DIR)/$(TARGET).o \

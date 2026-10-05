@@ -21,13 +21,10 @@ MVC2SBSConverter::MVC2SBSConverter(std::ostream& output, const output_format_t f
 	m_format(format),
 	m_frame_index(0)
 {
-	const int num_threads = -1;     // automatic number of threads
-
-	m_decoder = edge264_alloc(num_threads, nullptr, nullptr, false, nullptr, nullptr, nullptr);
-
-	if (m_decoder == nullptr)
-	{
-		throw std::runtime_error("edge264_alloc() failed");
+	Edge264MvcSettings settings;
+	edge264mvc_default_settings(&settings);
+	if (edge264mvc_open(&m_decoder, &settings) != EDGE264MVC_OK) {
+		throw std::runtime_error("edge264mvc_open() failed");
 	}
 }
 
@@ -35,7 +32,7 @@ MVC2SBSConverter::~MVC2SBSConverter(void)
 {
 	if (m_decoder != nullptr)
 	{
-		edge264_free(&m_decoder);
+		edge264mvc_close(&m_decoder);
 	}
 
 	if (m_packet_av)
@@ -88,9 +85,10 @@ size_t MVC2SBSConverter::findStartCode(const size_t from) const
 	return size;
 }
 
-bool MVC2SBSConverter::writeFrameH264(const Edge264Frame& edge264frame)
+bool MVC2SBSConverter::writeFrameH264(const Edge264MvcFrame& edge264frame)
 {
-	const bool mvc = (edge264frame.samples_mvc[0] != nullptr);
+	const bool mvc = (edge264frame.views[1].planes[0] != nullptr);
+
 	/* For MVC we output both views side by side. */
 	const int outputWidth = mvc ? edge264frame.width_Y * 2 : edge264frame.width_Y;
 	const int outputHeight = edge264frame.height_Y;
@@ -112,7 +110,7 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264Frame& edge264frame)
 		uint32_t ts = 0;
 		uint32_t nu = 0;
 
-		edge264_get_timing(m_decoder, &ts, &nu);
+		edge264mvc_get_timing(m_decoder, &ts, &nu);
 
 		const bool haveRate = (ts != 0) && (nu != 0) && (nu < 0x40000000u);
 		const int fnum = haveRate ? static_cast<int>(ts) : 24000;
@@ -185,12 +183,12 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264Frame& edge264frame)
 	// Y
 	for (int y = 0; y < edge264frame.height_Y; y++)
 	{
-		const uint8_t* left = edge264frame.samples[0] + static_cast<size_t>(y) * static_cast<size_t>(edge264frame.stride_Y);
+		const uint8_t* left = edge264frame.views[0].planes[0] + static_cast<size_t>(y) * static_cast<size_t>(edge264frame.stride_Y);
 		memcpy(m_frame_av->data[0] + y * m_frame_av->linesize[0], left, static_cast<size_t>(edge264frame.width_Y));
 
 		if (mvc)
 		{
-			const uint8_t* right = edge264frame.samples_mvc[0] + static_cast<size_t>(y) * static_cast<size_t>(edge264frame.stride_Y);
+			const uint8_t* right = edge264frame.views[1].planes[0] + static_cast<size_t>(y) * static_cast<size_t>(edge264frame.stride_Y);
 			memcpy(m_frame_av->data[0] + y * m_frame_av->linesize[0] + edge264frame.width_Y, right, static_cast<size_t>(edge264frame.width_Y));
 		}
 	}
@@ -198,12 +196,12 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264Frame& edge264frame)
 	// Cb
 	for (int y = 0; y < edge264frame.height_C; y++)
 	{
-		const uint8_t* left = edge264frame.samples[1] + static_cast<size_t>(y) * static_cast<size_t>(edge264frame.stride_C);
+		const uint8_t* left = edge264frame.views[0].planes[1] + static_cast<size_t>(y) * static_cast<size_t>(edge264frame.stride_C);
 		memcpy(m_frame_av->data[1] + y * m_frame_av->linesize[1], left, static_cast<size_t>(edge264frame.width_C));
 
 		if (mvc)
 		{
-			const uint8_t* right = edge264frame.samples_mvc[1] + static_cast<size_t>(y) * static_cast<size_t>(edge264frame.stride_C);
+			const uint8_t* right = edge264frame.views[1].planes[1] + static_cast<size_t>(y) * static_cast<size_t>(edge264frame.stride_C);
 			memcpy(m_frame_av->data[1] + y * m_frame_av->linesize[1] + edge264frame.width_C, right, static_cast<size_t>(edge264frame.width_C));
 		}
 	}
@@ -211,12 +209,12 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264Frame& edge264frame)
 	// Cr
 	for (int y = 0; y < edge264frame.height_C; y++)
 	{
-		const uint8_t* left = edge264frame.samples[2] + static_cast<size_t>(y) * static_cast<size_t>(edge264frame.stride_C);
+		const uint8_t* left = edge264frame.views[0].planes[2] + static_cast<size_t>(y) * static_cast<size_t>(edge264frame.stride_C);
 		memcpy(m_frame_av->data[2] + y * m_frame_av->linesize[2], left, static_cast<size_t>(edge264frame.width_C));
 
 		if (mvc)
 		{
-			const uint8_t* right = edge264frame.samples_mvc[2] + static_cast<size_t>(y) * static_cast<size_t>(edge264frame.stride_C);
+			const uint8_t* right = edge264frame.views[1].planes[2] + static_cast<size_t>(y) * static_cast<size_t>(edge264frame.stride_C);
 			memcpy(m_frame_av->data[2] + y * m_frame_av->linesize[2] + edge264frame.width_C, right, static_cast<size_t>(edge264frame.width_C));
 		}
 	}
@@ -252,9 +250,9 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264Frame& edge264frame)
 	return true;
 }
 
-bool MVC2SBSConverter::writeFrameYUV4MPEG2(const Edge264Frame& frame)
+bool MVC2SBSConverter::writeFrameYUV4MPEG2(const Edge264MvcFrame& frame)
 {
-	const bool mvc = (frame.samples_mvc[0] != nullptr);
+	const bool mvc = (frame.views[1].planes[0] != nullptr);
 
 	// Write Y4M header exactly once.
 	// This may be repeated at any position between frames,
@@ -275,7 +273,7 @@ bool MVC2SBSConverter::writeFrameYUV4MPEG2(const Edge264Frame& frame)
 		uint32_t ts = 0;
 		uint32_t nu = 0;
 
-		edge264_get_timing(m_decoder, &ts, &nu);
+		edge264mvc_get_timing(m_decoder, &ts, &nu);
 
 		const bool haveRate = (ts != 0) && (nu != 0) && (nu < 0x40000000u);
 		const int fnum = haveRate ? static_cast<int>(ts) : 24000;
@@ -310,12 +308,12 @@ bool MVC2SBSConverter::writeFrameYUV4MPEG2(const Edge264Frame& frame)
 	// Luma
 	for (int y = 0; y < frame.height_Y; y++)
 	{
-		const uint8_t* left = frame.samples[0] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_Y);
+		const uint8_t* left = frame.views[0].planes[0] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_Y);
 		m_output.write(reinterpret_cast<const char*>(left), static_cast<std::streamsize>(frame.width_Y));
 
 		if (mvc)
 		{
-			const uint8_t* right = frame.samples_mvc[0] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_Y);
+			const uint8_t* right = frame.views[1].planes[0] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_Y);
 			m_output.write(reinterpret_cast<const char*>(right), static_cast<std::streamsize>(frame.width_Y));
 		}
 
@@ -328,12 +326,12 @@ bool MVC2SBSConverter::writeFrameYUV4MPEG2(const Edge264Frame& frame)
 	// Cb
 	for (int y = 0; y < frame.height_C; y++)
 	{
-		const uint8_t* left = frame.samples[1] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_C);
+		const uint8_t* left = frame.views[0].planes[1] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_C);
 		m_output.write(reinterpret_cast<const char*>(left), static_cast<std::streamsize>(frame.width_C));
 
 		if (mvc)
 		{
-			const uint8_t* right = frame.samples_mvc[1] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_C);
+			const uint8_t* right = frame.views[1].planes[1] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_C);
 			m_output.write(reinterpret_cast<const char*>(right), static_cast<std::streamsize>(frame.width_C));
 		}
 
@@ -346,12 +344,12 @@ bool MVC2SBSConverter::writeFrameYUV4MPEG2(const Edge264Frame& frame)
 	// Cr
 	for (int y = 0; y < frame.height_C; y++)
 	{
-		const uint8_t* left = frame.samples[2] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_C);
+		const uint8_t* left = frame.views[0].planes[2] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_C);
 		m_output.write(reinterpret_cast<const char*>(left), static_cast<std::streamsize>(frame.width_C));
 
 		if (mvc)
 		{
-			const uint8_t* right = frame.samples_mvc[2] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_C);
+			const uint8_t* right = frame.views[1].planes[2] + static_cast<size_t>(y) * static_cast<size_t>(frame.stride_C);
 			m_output.write(reinterpret_cast<const char*>(right), static_cast<std::streamsize>(frame.width_C));
 		}
 
@@ -366,32 +364,33 @@ bool MVC2SBSConverter::writeFrameYUV4MPEG2(const Edge264Frame& frame)
 
 bool MVC2SBSConverter::drainFrames(void)
 {
-	Edge264Frame frame;
+	Edge264MvcFrame frame;
+	bool decoding_ok = true;
 
-	while (edge264_get_frame(m_decoder, &frame, 0) == 0)
+	while (decoding_ok && edge264mvc_receive_frame(m_decoder, &frame) == EDGE264MVC_OK)
 	{
+
 		switch (m_format)
 		{
 			case FORMAT_YUV4MPEG2:
-
 				if (!writeFrameYUV4MPEG2(frame))
 				{
-					return false;
+					decoding_ok = false;
 				}
 				break;
 			case FORMAT_H264:
-
 				if (!writeFrameH264(frame))
 				{
-					return false;
+					decoding_ok = false;
 				}
 				break;
 			default:
 				break;
 		}
+		edge264mvc_release_frame(m_decoder, &frame);
 	}
 
-	return true;
+	return decoding_ok;
 }
 
 bool MVC2SBSConverter::decodeNAL(const size_t begin, const size_t end)
@@ -402,12 +401,11 @@ bool MVC2SBSConverter::decodeNAL(const size_t begin, const size_t end)
 	}
 
 	const uint8_t* nal = m_input.data() + begin;
-	const uint8_t* nalEnd = m_input.data() + end;
 	unsigned stuck = 0;
 
 	while (true)
 	{
-		const int res = edge264_decode_NAL(m_decoder, nal, nalEnd, nullptr, nullptr);
+		const int res = edge264mvc_send_nal(m_decoder, nal, end - begin, 0, 0);
 		const bool framesOk = drainFrames();
 
 		if (!framesOk)
@@ -627,11 +625,11 @@ bool MVC2SBSConverter::flush_yuv4mpeg2(void)
 	/* Force edge264 to expose frames which are still delayed internally. */
 	uint8_t dummy = 0;
 	const uint8_t* begin = &dummy;
-	const uint8_t* end   = &dummy;
+	// const uint8_t* end   = &dummy;
 
 	for (unsigned i = 0; i < 256; i++)
 	{
-		const int res = edge264_decode_NAL(m_decoder, begin, end, nullptr, nullptr);
+		const int res = edge264mvc_send_nal(m_decoder, begin, 0, 0, 0);
 
 		if (!drainFrames())
 		{
@@ -653,7 +651,7 @@ bool MVC2SBSConverter::flush_yuv4mpeg2(void)
 		return false;
 	}
 
-	edge264_flush(m_decoder);
+	edge264mvc_flush(m_decoder);
 
 	return true;
 }
@@ -690,6 +688,8 @@ bool MVC2SBSConverter::flush_h264(void)
 
 bool MVC2SBSConverter::finish(void)
 {
+	edge264mvc_send_end(m_decoder);
+
 	if (m_finished)
 	{
 		return true;

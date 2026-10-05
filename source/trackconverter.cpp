@@ -48,7 +48,7 @@ std::string TrackConverter::output_file_name(void) const
 
 	return directory +
 	       m_input_file_name.substr(start, ext - start) +
-	       "_track" +
+	       ".track" +
 	       std::to_string(m_track_info.trackNumber) +
 	       output_extension();
 }

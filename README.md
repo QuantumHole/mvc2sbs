@@ -26,6 +26,7 @@ Recognized subtitles are saved in SubRip (SRT) format.
 * [gcc](https://gcc.gnu.org) or [clang](https://clang.llvm.org)
 * [GNU make](https://www.gnu.org/software/make)
 * [pkg-config](https://www.freedesktop.org/wiki/Software/pkg-config)
+* [edge264-mvc](https://github.com/jens-duttke/edge264-mvc) with one additional function to reach timing information
 
 ## Lint Dependencies
 
