@@ -46,7 +46,7 @@ H264Converter::~H264Converter(void)
 
 const std::string H264Converter::output_extension(void) const
 {
-	return "." + track_info().language + ".264";
+	return ".264";
 }
 
 void H264Converter::write_start_code(std::vector<uint8_t>& data)

@@ -722,11 +722,11 @@ void PGSStream::writePCS(
 	const composition_t compositionState,
 	const bool paletteOnlyUpdate,
 	const uint8_t paletteId,
-	const bool showObject) const
+	const uint8_t frame_copies) const
 {
 	std::vector<uint8_t> payload;
 
-	putBE16(payload, frame.screen.x);
+	putBE16(payload, frame.screen.x * std::max<uint8_t>(1, frame_copies));
 	putBE16(payload, frame.screen.y);
 
 	// Frame rate. 0x10 = 24 fps / üblicher Defaultwert.
@@ -738,11 +738,11 @@ void PGSStream::writePCS(
 	payload.push_back(paletteOnlyUpdate ? 0x80 : 0x00);
 	payload.push_back(paletteId);
 
-	if (showObject)
-	{
-		// Anzahl der Composition Objects
-		payload.push_back(1);
+	// number of Composition Objects
+	payload.push_back(frame_copies);
 
+	for (uint16_t i = 0; i < frame_copies; i++)
+	{
 		// Object ID
 		putBE16(payload, objectId);
 
@@ -753,12 +753,8 @@ void PGSStream::writePCS(
 		payload.push_back(0x00);
 
 		// Cropping-Werte werden nur bei gesetztem Cropping Flag benötigt.
-		putBE16(payload, frame.position.x);
+		putBE16(payload, frame.position.x + i * frame.screen.x);
 		putBE16(payload, frame.position.y);
-	}
-	else
-	{
-		payload.push_back(0);
 	}
 
 	writeSegment(buffer, pts, 0, PCS, payload);
@@ -890,54 +886,7 @@ void PGSStream::writeODS(
 	}
 }
 
-void PGSStream::writeFrameDisplaySet(
-	std::vector<uint8_t>& buffer,
-	const PGSFrame& frame,
-	const uint32_t pts,
-	const uint16_t compositionNumber,
-	const bool epochStart) const
-{
-	if ((frame.screen.x == 0) || (frame.screen.y == 0))
-	{
-		throw std::runtime_error("invalid screen size");
-	}
-
-	if ((frame.size.x == 0) || (frame.size.y == 0))
-	{
-		throw std::runtime_error("invalid frame size");
-	}
-
-	if ((frame.position.x + frame.size.x > frame.screen.x) ||
-	    (frame.position.y + frame.size.y > frame.screen.y))
-	{
-		throw std::runtime_error("frame not contained in screen");
-	}
-
-	Palette palette;
-	const std::vector<uint8_t> indexed = makeIndexedPixels(frame, palette);
-	const std::vector<uint8_t> rle = encodeRle(frame.size.x, frame.size.y, indexed);
-
-	const composition_t compositionState = epochStart ? COMPOSITION_EPOCH_START : COMPOSITION_NORMAL;
-
-	const uint16_t objectId = 0;
-	writePCS(
-		buffer,
-		frame,
-		objectId,
-		pts,
-		compositionNumber,
-		compositionState,
-		false,
-		0,
-		true);
-
-	writeWDS(buffer, frame, pts);
-	writePDS(buffer, palette, pts, 0);
-	writeODS(buffer, objectId, frame.size.x, frame.size.y, rle, pts);
-	writeSegment(buffer, pts, 0, END, {});
-}
-
-std::vector<uint8_t> PGSStream::saveFrame(const PGSFrame& frame)
+std::vector<uint8_t> PGSStream::saveFrame(const PGSFrame& frame, const bool sbs_double)
 {
 	std::vector<uint8_t> payload;
 
@@ -971,7 +920,7 @@ std::vector<uint8_t> PGSStream::saveFrame(const PGSFrame& frame)
 	const std::vector<uint8_t> rle = encodeRle(frame.size.x, frame.size.y, indexed);
 
 	const uint16_t objectId = 0;
-	writePCS(payload, frame, objectId, startPts, m_composition_id, compositionState, false, 0, true);
+	writePCS(payload, frame, objectId, startPts, m_composition_id, compositionState, false, 0, sbs_double ? 2 : 1);
 	m_composition_id++;
 	writeWDS(payload, frame, startPts);
 	writePDS(payload, palette, startPts, 0);
@@ -979,7 +928,7 @@ std::vector<uint8_t> PGSStream::saveFrame(const PGSFrame& frame)
 	writeSegment(payload, startPts, 0, END, {});
 
 	// write empty display set to clear all subtitles.
-	writePCS(payload, frame, objectId, endPts, m_composition_id, COMPOSITION_NORMAL, false, 0, false);
+	writePCS(payload, frame, objectId, endPts, m_composition_id, COMPOSITION_NORMAL, false, 0, 0);
 	m_composition_id++;
 	writeSegment(payload, endPts, 0, END, {});
 

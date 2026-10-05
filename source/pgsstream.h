@@ -75,9 +75,10 @@ class PGSStream {
 
 		/** encodes one frame as stream of PGS data.
 		 * @param frame frame to be stored.
+		 * @param sbs_double flag for doubling all subtitles for SBS frame layout.
 		 * @return encoded data stream.
 		 */
-		std::vector<uint8_t> saveFrame(const PGSFrame& frame);
+		std::vector<uint8_t> saveFrame(const PGSFrame& frame, const bool sbs_double);
 
 	private:
 
@@ -94,8 +95,9 @@ class PGSStream {
 		/** type of composition timestamp. */
 		typedef enum : uint8_t
 		{
-			COMPOSITION_NORMAL = 0x00,          ///< offset to compositon epoch start time.
-			COMPOSITION_EPOCH_START = 0x80      ///< composition epoch start time.
+			COMPOSITION_NORMAL = 0x00,             ///< start regular PGS segment, which may require all previous segments.
+			COMPOSITION_ACQUISITION_POINT = 0x40,  ///< a complete PGS state may be aquired from this point on, e.g. after a jump to this position.
+			COMPOSITION_EPOCH_START = 0x80         ///< composition epoch start time.
 		} composition_t;
 
 		/** associates indices with RGBA color information. */
@@ -202,7 +204,8 @@ class PGSStream {
 		 * @param compositionState timestamp reference.
 		 * @param paletteOnlyUpdate always false, write full palette.
 		 * @param paletteId palette ID, usually zero.
-		 * @param showObject true for regular PCS, false indicates hiding all previous compositions.
+		 * @param frame_copies number of copies to display. 0 means: hide all previous frames.
+		 * 1: show regular frame. 2: double the frame width and show frame on both SBS images.
 		 */
 		void writePCS(
 			std::vector<uint8_t>& file,
@@ -213,7 +216,7 @@ class PGSStream {
 			const composition_t compositionState,
 			const bool paletteOnlyUpdate,
 			const uint8_t paletteId,
-			const bool showObject) const;
+			const uint8_t frame_copies) const;
 
 		/** write Window Definition Segment.
 		 * @param file output buffer.
@@ -252,18 +255,4 @@ class PGSStream {
 			const uint16_t height,
 			const std::vector<uint8_t>& rle,
 			const uint32_t pts) const;
-
-		/** write display set.
-		 * @param file output buffer.
-		 * @param frame current frame to be encoded.
-		 * @param pts display timestamp of segment.
-		 * @param compositionNumber composition index.
-		 * @param epochStart how to interpret pts, as absolute timestamp, or relative to epoche start.
-		 */
-		void writeFrameDisplaySet(
-			std::vector<uint8_t>& file,
-			const PGSFrame& frame,
-			const uint32_t pts,
-			const uint16_t compositionNumber,
-			const bool epochStart) const;
 };

@@ -139,7 +139,9 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264MvcFrame& edge264frame)
 		// Typische H.264-Einstellungen
 		if ((av_opt_set(m_context_av->priv_data, "preset", "medium", AV_OPT_SEARCH_CHILDREN) < 0) ||
 		    (av_opt_set(m_context_av->priv_data, "tune", "zerolatency", AV_OPT_SEARCH_CHILDREN) < 0) ||
-		    (av_opt_set(m_context_av->priv_data, "crf", "18", AV_OPT_SEARCH_CHILDREN) < 0))
+		    (av_opt_set(m_context_av->priv_data, "crf", "18", AV_OPT_SEARCH_CHILDREN) < 0)
+			// || (av_opt_set(m_context_av->priv_data, "annexb", "1", AV_OPT_SEARCH_CHILDREN) < 0)
+		)
 		{
 			throw std::runtime_error("setting options failed");
 		}
@@ -688,8 +690,6 @@ bool MVC2SBSConverter::flush_h264(void)
 
 bool MVC2SBSConverter::finish(void)
 {
-	edge264mvc_send_end(m_decoder);
-
 	if (m_finished)
 	{
 		return true;
@@ -699,6 +699,8 @@ bool MVC2SBSConverter::finish(void)
 	{
 		return false;
 	}
+
+	edge264mvc_send_end(m_decoder);
 
 	if (((m_format == FORMAT_YUV4MPEG2) && (!flush_yuv4mpeg2())) ||
 	    ((m_format == FORMAT_H264) && (!flush_h264())))

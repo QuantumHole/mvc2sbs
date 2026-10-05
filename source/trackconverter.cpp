@@ -50,6 +50,7 @@ std::string TrackConverter::output_file_name(void) const
 	       m_input_file_name.substr(start, ext - start) +
 	       ".track" +
 	       std::to_string(m_track_info.trackNumber) +
+		   "." + m_track_info.language +
 	       output_extension();
 }
 

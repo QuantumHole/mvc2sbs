@@ -184,7 +184,7 @@ PGSConverter::~PGSConverter(void)
 
 const std::string PGSConverter::output_extension(void) const
 {
-	return "." + track_info().language + ".sup";
+	return ".sup";
 }
 
 void PGSConverter::append_ocr(const PGSStream::PGSFrame& frame)
@@ -277,9 +277,8 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 	while (m_pgs_stream.hasNextFrame())
 	{
 		PGSStream::PGSFrame frame = m_pgs_stream.getNextFrame();
-		frame.screen.x = static_cast<uint16_t>(frame.screen.x * 2);   // double screen size for SBS output
 		append_ocr(frame);
-		const std::vector<uint8_t> payload = m_pgs_stream.saveFrame(frame);
+		const std::vector<uint8_t> payload = m_pgs_stream.saveFrame(frame, true);
 		write(payload.data(), payload.size());
 	}
 
