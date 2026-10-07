@@ -21,11 +21,8 @@ class TrackMuxer
         /** information about one input file. */
         struct TrackFile
         {
-            std::string filename;   ///< input file name.
-            AVMediaType type;       ///< track type.
             std::string language;   ///< track language.
             std::string title;      ///< track title.
-            size_t stream_index;    ///< track index in input file.
 
             AVFormatContext* format = nullptr;
             AVStream* input_stream = nullptr;
@@ -34,8 +31,7 @@ class TrackMuxer
             bool eof = false;
         };
         std::vector<TrackFile> m_tracks;        ///< list of configured input tracks.
-        const std::string m_output_file_name;   ///< output file name for muxed file.
-        AVFormatContext* m_output_context = nullptr;
+        AVFormatContext* m_output_context;      ///< output context.
 
         static TrackMuxer* m_instance;          ///< singleton instance pointer.
 
@@ -55,17 +51,17 @@ class TrackMuxer
 
         /** add an input file to the list of tracks.
          * @param file_name input file name.
-         * @param type type of the track in input file.
+         * @param track_index track index in input file.
+         * @param format_name AV codec ID of the track in input file.
          * @param language language of the track.
          * @param title title for the track in output file.
-         * @param index optional track index in input file.
          */
         void add_file(
             const std::string& file_name,
-            const AVMediaType type,
+            const size_t track_index,
+            const std::string& format_name,
             const std::string& language,
-            const std::string& title,
-            const size_t index = 0);
+            const std::string& title);
 
         /** start muxing the configured tracks. */
         void mux(void);

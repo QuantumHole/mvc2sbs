@@ -37,51 +37,24 @@ static void check_ffmpeg(const int error, const char* operation)
     }
 }
 
-static std::string input_format_for_file(const std::string& filename, AVMediaType type)
-{
-    switch (type)
-    {
-        case AVMEDIA_TYPE_VIDEO:
-            return "h264";
-
-        case AVMEDIA_TYPE_SUBTITLE:
-        {
-            const auto pos = filename.find_last_of('.');
-
-            if (pos != std::string::npos)
-            {
-                const std::string extension = filename.substr(pos + 1);
-
-                if (extension == "srt" || extension == "SRT")
-                {
-                    return "srt";
-                }
-
-                if (extension == "sup" || extension == "SUP")
-                {
-                    return "sup";
-                }
-            }
-
-            throw std::runtime_error("Unknown subtitle format: " + filename);
-        }
-
-        default:
-            throw std::runtime_error("Unsupported track type: " + filename);
-    }
-}
-
-TrackMuxer::TrackMuxer(const std::string& file_name) :
-    m_output_file_name(file_name)
+TrackMuxer::TrackMuxer(const std::string& file_name)
 {
     /* Create Matroska output. */
     check_ffmpeg(
-        avformat_alloc_output_context2(&m_output_context, nullptr, "matroska", m_output_file_name.c_str()),
+        avformat_alloc_output_context2(&m_output_context, nullptr, "matroska", file_name.c_str()),
         "avformat_alloc_output_context2");
 
     if (m_output_context == nullptr)
     {
         throw std::runtime_error("Could not create Matroska output context");
+    }
+
+    /* Open output file. */
+    if (!(m_output_context->oformat->flags & AVFMT_NOFILE))
+    {
+        check_ffmpeg(
+            avio_open(&m_output_context->pb, file_name.c_str(), AVIO_FLAG_WRITE),
+            "avio_open");
     }
 }
 
@@ -96,15 +69,14 @@ TrackMuxer& TrackMuxer::instance(const std::string& file_name)
 
 void TrackMuxer::add_file(
     const std::string& file_name,
-    const AVMediaType type,
+    const size_t track_index,
+    const std::string& format_name,
     const std::string& language,
-    const std::string& title,
-    const size_t index)
+    const std::string& title)
 {
-    TrackFile track = {file_name, type, language, title, index};
+    TrackFile track = {language, title};
 
     /* open file. */
-    const std::string format_name = input_format_for_file(track.filename, track.type);
     const AVInputFormat* input_format = av_find_input_format(format_name.c_str());
     if (input_format == nullptr)
     {
@@ -113,7 +85,7 @@ void TrackMuxer::add_file(
 
     /* Open elementary stream. */
     check_ffmpeg(
-        avformat_open_input(&track.format, track.filename.c_str(), input_format, nullptr),
+        avformat_open_input(&track.format, file_name.c_str(), input_format, nullptr),
         "avformat_open_input");
 
     /* Let FFmpeg determine stream parameters. */
@@ -121,26 +93,49 @@ void TrackMuxer::add_file(
         avformat_find_stream_info(track.format, nullptr),
         "avformat_find_stream_info");
 
+    const bool is_container = format_name == "matroska" || format_name == "webm";
     /*
      * Find the requested stream.
      *
      * For our elementary-stream inputs there should normally
      * be exactly one stream, but don't rely on that.
      */
-    for (unsigned int stream_index = 0; stream_index < track.format->nb_streams; stream_index++)
+    if (is_container)
     {
-        AVStream* stream = track.format->streams[stream_index];
-
-        if (stream->codecpar->codec_type == track.type)
+        if (track_index >= track.format->nb_streams)
         {
-            track.input_stream = stream;
-            break;
+            throw std::runtime_error("Track index " + std::to_string(track_index) + " is out of range for: " + file_name);
+        }
+
+        track.input_stream = track.format->streams[track_index];
+    }
+    else
+    {
+        for (unsigned int stream_index = 0; stream_index < track.format->nb_streams; stream_index++)
+        {
+            AVStream* stream = track.format->streams[stream_index];
+            if (stream == nullptr || stream->codecpar == nullptr)
+            {
+                continue;
+            }
+
+            /*
+             * Ignore data streams. We are interested in actual
+             * audio/video/subtitle streams.
+             */
+            if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO ||
+                stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO ||
+                stream->codecpar->codec_type == AVMEDIA_TYPE_SUBTITLE)
+            {
+                track.input_stream = stream;
+                break;
+            }
         }
     }
 
     if (track.input_stream == nullptr)
     {
-        throw std::runtime_error("Could not find requested stream in: " + track.filename);
+        throw std::runtime_error("Could not find requested stream in: " + file_name);
     }
 
     track.output_stream = avformat_new_stream(m_output_context, nullptr);
@@ -149,8 +144,7 @@ void TrackMuxer::add_file(
         throw std::runtime_error("avformat_new_stream failed");
     }
 
-    /*
-     * Copy codec parameters.
+    /* Copy codec parameters.
      *
      * This copies codec_id, width, height, extradata,
      * audio parameters, etc.
@@ -158,17 +152,6 @@ void TrackMuxer::add_file(
     check_ffmpeg(
         avcodec_parameters_copy(track.output_stream->codecpar, track.input_stream->codecpar),
         "avcodec_parameters_copy");
-
-    /*
-     * Explicitly set PGS codec ID.
-     *
-     * Normally the SUP demuxer already provides this,
-     * but explicitly setting it makes the intention clear.
-     */
-    if ((track.type == AVMEDIA_TYPE_SUBTITLE) && (format_name == "sup"))
-    {
-        track.output_stream->codecpar->codec_id = AV_CODEC_ID_HDMV_PGS_SUBTITLE;
-    }
 
     /*
      * Use the same time base initially.
@@ -213,26 +196,15 @@ void TrackMuxer::mux(void)
 
     try
     {
-        /* Open output file. */
-        if (!(m_output_context->oformat->flags & AVFMT_NOFILE))
-        {
-            check_ffmpeg(
-                avio_open(&m_output_context->pb, m_output_file_name.c_str(), AVIO_FLAG_WRITE),
-                "avio_open");
-        }
-
         /* Write Matroska header. */
         check_ffmpeg(
             avformat_write_header(m_output_context, nullptr),
             "avformat_write_header");
 
-        /*
-         * ------------------------------------------------------------
-         * Read and interleave packets.
+        /* Read and interleave packets.
          *
          * One packet from every input is kept buffered.
          * We always write the packet with the earliest timestamp.
-         * ------------------------------------------------------------
          */
         while (true)
         {
