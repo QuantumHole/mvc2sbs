@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 PROJECT_ROOT := .
-DEPENDENCIES = "libmatroska libebml tesseract libpng libavcodec libavutil"
+DEPENDENCIES = "libmatroska libebml tesseract libpng libavcodec libavutil libavformat"
 
 include common/cplusplus.mk
 include common/license.mk
@@ -26,6 +26,7 @@ OBJECTS := \
 	$(BUILD_DIR)/ocr.o \
 	$(BUILD_DIR)/h264converter.o \
 	$(BUILD_DIR)/mvc2sbsconverter.o \
+	$(BUILD_DIR)/trackmuxer.o \
 	$(EDGE264_OBJECTS)
 
 CXXFLAGS += -isystem edge264-mvc
