@@ -19,7 +19,7 @@ H264Converter::H264Converter(
 	TrackConverter(input_file_name, info),
 	m_nal_length_size(0),
 	m_codec_private_written(false),
-	m_mvc2sbs(output_stream(), MVC2SBSConverter::FORMAT_H264)
+	m_mvc2sbs(output_stream())
 {
 	if (info.codecPrivate.size() < 5)
 	{
@@ -386,13 +386,8 @@ size_t H264Converter::process_data(const std::vector<uint8_t>& data, const Frame
 
 	if (!output_data.empty())
 	{
-		// output_data contains a pure H.264 stream in Annex-B format.
-		// This can be stored/dumped at this point, if not further processed.
-		// write(output_data.data(), output_data.size());
-
 		// The MVC video stream is converted into SBS format
-		// and output as YUV4MPEG2 to stdout.
-		// This stream should not be saved to disk, because it is uncompressed video.
+		// and re-compressed into H.264 format.
 		if (!m_mvc2sbs.feed(output_data))
 		{
 			return 0;

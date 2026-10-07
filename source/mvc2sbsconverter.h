@@ -25,19 +25,11 @@ extern "C" {
 class MVC2SBSConverter
 {
 	public:
-		/** possible output formats. */
-		typedef enum
-		{
-			FORMAT_YUV4MPEG2,   ///< YUV4MPEG2 stream of uncompressed frames.
-			FORMAT_H264         ///< H.264 stream of raw frames.
-		}
-		output_format_t;
 
 		/** constructor.
 		 * @param output output stream for converted data.
-		 * @param format output format for the converted data.
 		 */
-		explicit MVC2SBSConverter(std::ostream& output, const output_format_t format);
+		explicit MVC2SBSConverter(std::ostream& output);
 
 		/** destructor. */
 		~MVC2SBSConverter(void);
@@ -93,23 +85,6 @@ class MVC2SBSConverter
 		*/
 		bool drainFrames(void);
 
-		/** fetch remaining frames.
-		* @return success status of flush operation.
-		*/
-		bool flush_yuv4mpeg2(void);
-
-		/** fetch remaining frames.
-		* @return success status of flush operation.
-		*/
-		bool flush_h264(void);
-
-		/** write complete frame into output stream.
-		* The output format is YUV4MPEG2.
-		* @param edge264frame completely decoded frame.
-		* @return success status of writing frame into output stream.
-		*/
-		bool writeFrameYUV4MPEG2(const Edge264MvcFrame& edge264frame);
-
 		/** write complete frame into output stream.
 		* The output format is H.264.
 		* @param edge264frame completely decoded frame.
@@ -121,8 +96,6 @@ class MVC2SBSConverter
 		std::ostream& m_output;            ///< output stream for compressed or uncompressed frames.
 		std::vector<uint8_t> m_input;      ///< input buffer for data passed into feed().
 		bool m_finished;                   ///< flag that finish() has been called.
-		bool m_y4mStarted;                 ///< flag that frame information has been written.
-		const output_format_t m_format;    ///< output format.
 
 		// libAV interface
 		AVCodecContext* m_context_av = nullptr;  ///< AVCodec context.
