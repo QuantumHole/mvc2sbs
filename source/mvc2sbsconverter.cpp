@@ -20,8 +20,11 @@ MVC2SBSConverter::MVC2SBSConverter(std::ostream& output) :
 	m_frame_index(0)
 {
 	Edge264MvcSettings settings;
+
 	edge264mvc_default_settings(&settings);
-	if (edge264mvc_open(&m_decoder, &settings) != EDGE264MVC_OK) {
+
+	if (edge264mvc_open(&m_decoder, &settings) != EDGE264MVC_OK)
+	{
 		throw std::runtime_error("edge264mvc_open() failed");
 	}
 }
@@ -138,8 +141,8 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264MvcFrame& edge264frame)
 		if ((av_opt_set(m_context_av->priv_data, "preset", "medium", AV_OPT_SEARCH_CHILDREN) < 0) ||
 		    (av_opt_set(m_context_av->priv_data, "tune", "zerolatency", AV_OPT_SEARCH_CHILDREN) < 0) ||
 		    (av_opt_set(m_context_av->priv_data, "crf", "18", AV_OPT_SEARCH_CHILDREN) < 0)
-			// || (av_opt_set(m_context_av->priv_data, "annexb", "1", AV_OPT_SEARCH_CHILDREN) < 0)
-		)
+		    // || (av_opt_set(m_context_av->priv_data, "annexb", "1", AV_OPT_SEARCH_CHILDREN) < 0)
+		    )
 		{
 			throw std::runtime_error("setting options failed");
 		}

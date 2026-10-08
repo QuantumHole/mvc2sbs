@@ -16,7 +16,6 @@ class OCR
 		bool m_ocr_available;            ///< flag indicating that tesseract has been initialized.
 
 	public:
-
 		/** constructor.
 		 * @param language track language, needed for initialization of tesseract.
 		 */

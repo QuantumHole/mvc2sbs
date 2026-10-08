@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "pgsconverter.h"
+#include "trackmuxer.h"
 
 #include <iostream>
 #include <fstream>
@@ -180,11 +181,6 @@ PGSConverter::~PGSConverter(void)
 {
 	m_output_srt.flush();
 	m_output_srt.close();
-}
-
-const std::string PGSConverter::output_extension(void) const
-{
-	return ".sup";
 }
 
 void PGSConverter::append_ocr(const PGSStream::PGSFrame& frame)

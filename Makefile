@@ -27,6 +27,7 @@ OBJECTS := \
 	$(BUILD_DIR)/h264converter.o \
 	$(BUILD_DIR)/mvc2sbsconverter.o \
 	$(BUILD_DIR)/trackmuxer.o \
+	$(BUILD_DIR)/copyconverter.o \
 	$(EDGE264_OBJECTS)
 
 CXXFLAGS += -isystem edge264-mvc

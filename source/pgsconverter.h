@@ -24,12 +24,6 @@ class PGSConverter : public TrackConverter
 		 */
 		void append_ocr(const PGSStream::PGSFrame& frame);
 
-	protected:
-		/** file extension for the generated output file.
-		 * @return file extension for the generated output file.
-		 */
-		virtual const std::string output_extension(void) const override;
-
 	public:
 		/** constructor.
 		 * @param input_file_name path to input file.

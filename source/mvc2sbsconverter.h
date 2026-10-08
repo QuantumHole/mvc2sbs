@@ -25,7 +25,6 @@ extern "C" {
 class MVC2SBSConverter
 {
 	public:
-
 		/** constructor.
 		 * @param output output stream for converted data.
 		 */
@@ -58,38 +57,38 @@ class MVC2SBSConverter
 		MVC2SBSConverter& operator=(const MVC2SBSConverter& obj);
 
 		/** process buffered Annex-B input in input buffer.
-		* Ignores all data before the first start code.
-		* Decode complete NAL, if two start codes have been found.
-		* @param endOfStream flag for the end of stream,
-		* indicating no more data to be received.
-		* @return flag indicating that all data has been processed.
-		*/
+		 * Ignores all data before the first start code.
+		 * Decode complete NAL, if two start codes have been found.
+		 * @param endOfStream flag for the end of stream,
+		 * indicating no more data to be received.
+		 * @return flag indicating that all data has been processed.
+		 */
 		bool processInput(const bool endOfStream);
-		
+
 		/** look for Annex-B start-code (00 00 01 or 00 00 00 01)
-		* in input data stream.
-		* @param from start index in input data.
-		* @return index of start code.
-		*/
+		 * in input data stream.
+		 * @param from start index in input data.
+		 * @return index of start code.
+		 */
 		size_t findStartCode(const size_t from) const;
 
 		/** decode NAL found in input buffer.
-		* @param begin start index of NAL in input buffer.
-		* @param end end index of NAL in input buffer.
-		* @return flag indicating success or failure of decoding.
-		*/
+		 * @param begin start index of NAL in input buffer.
+		 * @param end end index of NAL in input buffer.
+		 * @return flag indicating success or failure of decoding.
+		 */
 		bool decodeNAL(const size_t begin, const size_t end);
 
 		/** receive decoded frames from edge264.
-		* @return success status of processing received frames.
-		*/
+		 * @return success status of processing received frames.
+		 */
 		bool drainFrames(void);
 
 		/** write complete frame into output stream.
-		* The output format is H.264.
-		* @param edge264frame completely decoded frame.
-		* @return success status of writing frame into output stream.
-		*/
+		 * The output format is H.264.
+		 * @param edge264frame completely decoded frame.
+		 * @return success status of writing frame into output stream.
+		 */
 		bool writeFrameH264(const Edge264MvcFrame& edge264frame);
 
 		Edge264MvcDecoder* m_decoder;         ///< external decoder for MVC frames

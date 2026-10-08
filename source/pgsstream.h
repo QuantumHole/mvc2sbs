@@ -14,7 +14,6 @@
 /** reads and writes subtitel frames in PGS format. */
 class PGSStream {
 	public:
-
 		/** two component vector of doubles.
 		 * Used to store a range in time for the display a subtitle.
 		 */
@@ -81,7 +80,6 @@ class PGSStream {
 		std::vector<uint8_t> saveFrame(const PGSFrame& frame, const bool sbs_double);
 
 	private:
-
 		/** segments stored inside a PGS stream. */
 		typedef enum : uint8_t
 		{
@@ -154,21 +152,21 @@ class PGSStream {
 		void processSegment(const uint8_t type, const uint32_t pts, const std::vector<uint8_t>& p);
 
 		/** Read presentation composition segement.
-		* Translate defined objects into frames.
-		* Frame hide time is set, when the next empty composition object is received.
-		* @param  pts display timestamp.
-		* @param p segment payload extracted from input stream.
-		*/
+		 * Translate defined objects into frames.
+		 * Frame hide time is set, when the next empty composition object is received.
+		 * @param  pts display timestamp.
+		 * @param p segment payload extracted from input stream.
+		 */
 		void readPCS(const uint32_t pts, const std::vector<uint8_t>& p);
 
 		/** read palette definition segment.
-		* @param p segment payload extracted from input stream.
+		 * @param p segment payload extracted from input stream.
 		 */
 		void readPDS(const std::vector<uint8_t>& p);
 
 		/** read Object Definition Segment.
-		* @param p segment payload extracted from input stream.
-		*/
+		 * @param p segment payload extracted from input stream.
+		 */
 		void readODS(const std::vector<uint8_t>& p);
 
 		/** compose frame from previously received PCS, ODS, PDS, and WDS. */
@@ -180,7 +178,7 @@ class PGSStream {
 		 * @return frame pixels encoded as palette indices.
 		 */
 		std::vector<uint8_t> makeIndexedPixels(const PGSFrame& frame, Palette& palette) const;
-		
+
 		/** write general PGS segment into buffer.
 		 * @param file output buffer.
 		 * @param pts display timestamp of segment.

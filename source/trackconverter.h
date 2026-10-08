@@ -19,7 +19,6 @@
 class TrackConverter
 {
 	public:
-
 		/** meta data about the track to be prcessed. */
 		struct TrackInfo
 		{
@@ -107,7 +106,6 @@ class TrackConverter
 		void add_data(const uint8_t* data, const size_t size, const FrameInfo& frameinfo);
 
 	protected:
-
 		/** retrieve the output stream.
 		 * @return output stream of the current converter.
 		 */
@@ -118,11 +116,6 @@ class TrackConverter
 		 * @param size number of bytes for the output stream.
 		 */
 		void write(const uint8_t* data, const size_t size);
-
-		/** file extension for the generated output file.
-		 * @return file extension for the generated output file.
-		 */
-		virtual const std::string output_extension(void) const = 0;
 
 		/** process packets of data.
 		 * @param data one bunch of data to be processed. Data may be cut at arbitrary positions into packets.
