@@ -19,6 +19,7 @@ int main(const int argc, const char** argv)
 
 	MKVStreamer mkv(filename);
 	mkv.run();
+	mkv.finish();
 
 	return 0;
 }

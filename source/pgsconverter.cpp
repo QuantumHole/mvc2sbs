@@ -270,12 +270,16 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 	}
 
 	m_pgs_stream.push(pgsdata);
+
+	// TrackMuxer& muxer = TrackMuxer::instance();
 	while (m_pgs_stream.hasNextFrame())
 	{
 		PGSStream::PGSFrame frame = m_pgs_stream.getNextFrame();
 		append_ocr(frame);
 		const std::vector<uint8_t> payload = m_pgs_stream.saveFrame(frame, true);
 		write(payload.data(), payload.size());
+
+
 	}
 
 	return offset;

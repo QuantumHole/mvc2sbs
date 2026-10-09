@@ -144,7 +144,8 @@ TrackConverter::TrackConverter(const std::string& input_file_name, const TrackIn
 	m_mutex(),
 	m_thread(),
 	m_data_available(),
-	m_keep_running(true)
+	m_keep_running(true),
+	m_mux_track_id(TrackMuxer::instance().add_live_track(track_info))
 {
 }
 

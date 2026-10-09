@@ -220,6 +220,24 @@ static std::string GetTrackLanguage(const libmatroska::KaxTrackEntry* track)
 	return language.empty() ? "und" : language;
 }
 
+static std::string GetTrackTitle(const libmatroska::KaxTrackEntry* track)
+{
+	if (!track)
+	{
+		return "";
+	}
+
+	const libmatroska::KaxTrackName* element = FindElement<libmatroska::KaxTrackName>(*track);
+
+	if (!element)
+	{
+		return "";
+	}
+
+	const std::string title = static_cast<std::string>(element->GetValueUTF8());
+	return title;
+}
+
 static uint64_t getClusterEnd(
 	const libebml::EbmlElement& cluster,
 	const uint64_t dataStart,
@@ -256,6 +274,7 @@ static TrackConverter::TrackInfo GetH264TrackInfo(const libmatroska::KaxTrackEnt
 	result.defaultDuration = GetDefaultDuration(track);
 	// result.timestampScale = track->GlobalTimecodeScale();
 	result.language = GetTrackLanguage(track);
+	result.title = GetTrackTitle(track);
 
 	return result;
 }
@@ -289,11 +308,16 @@ MKVStreamer::MKVStreamer(const std::string& filename) :
 	m_input_file_name(filename),
 	m_input_file_size(0),
 	m_converters(),
-	m_last_status_time(std::chrono::steady_clock::now())
+	m_last_status_time(std::chrono::steady_clock::now()),
+	m_muxer(TrackMuxer::instance(m_input_file_name + ".muxed.mkv"))
 {
 }
 
 MKVStreamer::~MKVStreamer(void)
+{
+}
+
+void MKVStreamer::finish(void)
 {
 	// threads need a little time to settle before being destroyed.
 	std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -302,6 +326,8 @@ MKVStreamer::~MKVStreamer(void)
 		delete it->second;
 	}
 	m_converters.clear();
+
+	m_muxer.mux();
 }
 
 void MKVStreamer::readBlock(
@@ -659,9 +685,25 @@ void MKVStreamer::readTracks(libmatroska::KaxTracks& tracksElement, libebml::Ebm
 		}
 		else if (info.codecId == "V_MPEG4/ISO/AVC")
 		{
-			m_converters[info.trackNumber] = new H264Converter(m_input_file_name, info);
+			// m_converters[info.trackNumber] = new H264Converter(m_input_file_name, info);
+		}
+		else
+		{
+			// copy all other tracks
+			// m_muxer.add_file(m_input_file_name, info.trackNumber, "matroska", "", "");
 		}
 	}
+
+	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.track1.und.264", 0, "h264", "eng", "H.264 Video");
+	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.mkv", 1, "matroska", "eng", "English DTS Surround 7.1");
+	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.track9.eng.sup",  0, "sup", "eng", "English PGS");
+	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.track11.eng.sup", 0, "sup", "eng", "English PGS (for hearing impaired)");
+	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.track13.deu.sup", 0, "sup", "deu", "Deutsch PGS");
+	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.track21.fra.sup", 0, "sup", "fra", "Français PGS");
+	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.mkv.9.eng.srt",   0, "srt", "eng", "English");
+	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.mkv.11.eng.srt",  0, "srt", "eng", "English (for hearing impaired)");
+	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.mkv.13.deu.srt",  0, "srt", "deu", "Deutsch");
+	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.mkv.21.fra.srt",  0, "srt", "fra", "Français");
 }
 
 void MKVStreamer::streamSegment(libebml::EbmlStream& stream, const size_t fileSize)
@@ -744,11 +786,7 @@ void MKVStreamer::run(void)
 		while (true)
 		{
 			libebml::EbmlElement* element =
-				stream.FindNextElement(
-					libmatroska::KaxMatroska_Context,
-					upperLevel,
-					m_input_file_size,
-					false);
+				stream.FindNextElement(libmatroska::KaxMatroska_Context, upperLevel, m_input_file_size, false);
 
 			if (element == nullptr)
 			{

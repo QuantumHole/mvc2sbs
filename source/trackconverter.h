@@ -22,15 +22,16 @@ class TrackConverter
 		/** meta data about the track to be prcessed. */
 		struct TrackInfo
 		{
-			uint64_t trackNumber = 0;
-			std::string codecId = "";
+			uint64_t trackNumber = 0;                   ///< matroska track number
+			std::string codecId = "";                   ///< matroska track ID
 			std::vector<uint8_t> codecPrivate = {};
 			uint64_t width = 0;
 			uint64_t height = 0;
 			uint64_t codecDelay = 0;        // ns
 			uint64_t defaultDuration = 0;   // ns
 			uint64_t timestampScale = 1'000'000;
-			std::string language = "und";   // undefined
+			std::string language = "und";              ///< track language, default "undefined"
+			std::string title = "";                    ///< track title
 		};
 
 		/** metadata about a frame or block of frames, mostly timing information. */
@@ -133,6 +134,7 @@ class TrackConverter
 		std::thread m_thread;                      ///< thread variable for the thread running process_data().
 		std::condition_variable m_data_available;  ///< condition variable for signalling when more input data for the thread is available.
 		bool m_keep_running;                       ///< flag for stopping and exiting the thread.
+		size_t m_mux_track_id;                     ///< track ID for the output muxer.
 
 		/** generate a unique output file name from input meta data.
 		 * @return file name for the output stream target.
