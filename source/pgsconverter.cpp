@@ -220,6 +220,7 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 	std::vector<uint8_t> pgsdata;
 	const size_t size = data.size();
 	size_t offset = 0;
+	TrackMuxer& muxer = TrackMuxer::instance();
 
 	while (offset < size)
 	{
@@ -261,25 +262,32 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 		pgsdata.insert(pgsdata.end(), value.begin(), value.end());
 		value = writeUint32BE(0);
 		pgsdata.insert(pgsdata.end(), value.begin(), value.end());
-		pgsdata.insert(
-			pgsdata.end(),
+
+		std::vector<uint8_t> frame_data(
 			data.begin() + static_cast<ptrdiff_t>(offset),
 			data.begin() + static_cast<ptrdiff_t>(offset) + static_cast<ptrdiff_t>(segmentSize));
+
+		pgsdata.insert(pgsdata.end(), frame_data.begin(), frame_data.end());
+
+		muxer.push(
+			mux_id(),
+			frame_data,
+			static_cast<int64_t>(info.pts / 1e6),
+			0,
+			0,
+			0);
 
 		offset += segmentSize;
 	}
 
 	m_pgs_stream.push(pgsdata);
 
-	// TrackMuxer& muxer = TrackMuxer::instance();
 	while (m_pgs_stream.hasNextFrame())
 	{
 		PGSStream::PGSFrame frame = m_pgs_stream.getNextFrame();
 		append_ocr(frame);
 		const std::vector<uint8_t> payload = m_pgs_stream.saveFrame(frame, true);
 		write(payload.data(), payload.size());
-
-
 	}
 
 	return offset;

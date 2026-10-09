@@ -35,10 +35,7 @@ static void check_ffmpeg(const int error, const char* operation)
 {
 	if (error < 0)
 	{
-		throw std::runtime_error(
-				  std::string(operation) +
-				  ": " +
-				  ffmpeg_error(error));
+		throw std::runtime_error(std::string(operation) + ": " + ffmpeg_error(error));
 	}
 }
 
