@@ -25,7 +25,6 @@ extern "C" {
 class TrackMuxer
 {
 	private:
-
 		/** structure for pushing data from TrackConverter. */
 		struct LivePacket
 		{
@@ -65,8 +64,8 @@ class TrackMuxer
 			/** explicit copy constructor, because mutex and condition variable are not copyable.
 			 * @param other reference to template object.
 			 */
-			TrackFile(TrackFile&& other) noexcept
-				: language(std::move(other.language)),
+			TrackFile(TrackFile && other) noexcept:
+				language(std::move(other.language)),
 				title(std::move(other.title)),
 				format(std::exchange(other.format, nullptr)),
 				input_stream(std::exchange(other.input_stream, nullptr)),

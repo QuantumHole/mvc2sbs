@@ -839,4 +839,12 @@ void MKVStreamer::run(void)
 		std::cerr << "Fehler: " << e.what() << std::endl;
 		return;
 	}
+
+	/* notify all track converters of EOF. */
+	for (std::map<uint64_t, TrackConverter*>::iterator it = m_converters.begin(); it != m_converters.end(); ++it)
+	{
+		it->second->finish();
+		delete it->second;
+		it->second = nullptr;
+	}
 }

@@ -106,11 +106,19 @@ class TrackConverter
 		 */
 		void add_data(const uint8_t* data, const size_t size, const FrameInfo& frameinfo);
 
+		/** notify track converter that no more data is comming in. */
+		void finish(void);
+
 	protected:
 		/** retrieve the output stream.
 		 * @return output stream of the current converter.
 		 */
 		std::ofstream& output_stream(void);
+
+		/** output muxer track ID.
+		 * @return muxer track ID.
+		 */
+		size_t mux_id(void) const;
 
 		/** write bytes to output stream.
 		 * @param data pointer to output data.
@@ -134,7 +142,7 @@ class TrackConverter
 		std::thread m_thread;                      ///< thread variable for the thread running process_data().
 		std::condition_variable m_data_available;  ///< condition variable for signalling when more input data for the thread is available.
 		bool m_keep_running;                       ///< flag for stopping and exiting the thread.
-		size_t m_mux_track_id;                     ///< track ID for the output muxer.
+		const size_t m_mux_track_id;                     ///< track ID for the output muxer.
 
 		/** generate a unique output file name from input meta data.
 		 * @return file name for the output stream target.

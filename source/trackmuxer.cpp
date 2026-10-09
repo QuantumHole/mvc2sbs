@@ -19,9 +19,6 @@ extern "C" {
 
 #include "trackconverter.h"
 
-
-// #error incomplete implementation
-
 TrackMuxer* TrackMuxer::m_instance = nullptr;
 
 /** Convert an FFmpeg error code to a readable string. */
@@ -47,153 +44,171 @@ static void check_ffmpeg(const int error, const char* operation)
 
 static AVCodecID matroskaCodecIdToAvCodecId(const std::string& id)
 {
-    static const std::unordered_map<std::string, AVCodecID> mapping = {
-        // Video
-        {"V_AV1",             AV_CODEC_ID_AV1},
-        {"V_DIRAC",           AV_CODEC_ID_DIRAC},
-        {"V_FFV1",            AV_CODEC_ID_FFV1},
-        {"V_MJPEG",           AV_CODEC_ID_MJPEG},
-        {"V_MPEG1",           AV_CODEC_ID_MPEG1VIDEO},
-        {"V_MPEG2",           AV_CODEC_ID_MPEG2VIDEO},
-        {"V_MPEG4/ISO/ASP",   AV_CODEC_ID_MPEG4},
-        {"V_MPEG4/ISO/AP",    AV_CODEC_ID_MPEG4},
-        {"V_MPEG4/ISO/SP",    AV_CODEC_ID_MPEG4},
-        {"V_MPEG4/ISO/AVC",   AV_CODEC_ID_H264},
-        {"V_MPEG4/MS/V3",     AV_CODEC_ID_MSMPEG4V3},
-        {"V_MPEGH/ISO/HEVC",  AV_CODEC_ID_HEVC},
-        {"V_PRORES",          AV_CODEC_ID_PRORES},
-        {"V_THEORA",          AV_CODEC_ID_THEORA},
-        {"V_UNCOMPRESSED",    AV_CODEC_ID_RAWVIDEO},
-        {"V_VP8",             AV_CODEC_ID_VP8},
-        {"V_VP9",             AV_CODEC_ID_VP9},
+	static const std::unordered_map<std::string, AVCodecID> mapping = {
+		// Video
+		{"V_AV1",             AV_CODEC_ID_AV1},
+		{"V_DIRAC",           AV_CODEC_ID_DIRAC},
+		{"V_FFV1",            AV_CODEC_ID_FFV1},
+		{"V_MJPEG",           AV_CODEC_ID_MJPEG},
+		{"V_MPEG1",           AV_CODEC_ID_MPEG1VIDEO},
+		{"V_MPEG2",           AV_CODEC_ID_MPEG2VIDEO},
+		{"V_MPEG4/ISO/ASP",   AV_CODEC_ID_MPEG4},
+		{"V_MPEG4/ISO/AP",    AV_CODEC_ID_MPEG4},
+		{"V_MPEG4/ISO/SP",    AV_CODEC_ID_MPEG4},
+		{"V_MPEG4/ISO/AVC",   AV_CODEC_ID_H264},
+		{"V_MPEG4/MS/V3",     AV_CODEC_ID_MSMPEG4V3},
+		{"V_MPEGH/ISO/HEVC",  AV_CODEC_ID_HEVC},
+		{"V_PRORES",          AV_CODEC_ID_PRORES},
+		{"V_THEORA",          AV_CODEC_ID_THEORA},
+		{"V_UNCOMPRESSED",    AV_CODEC_ID_RAWVIDEO},
+		{"V_VP8",             AV_CODEC_ID_VP8},
+		{"V_VP9",             AV_CODEC_ID_VP9},
 
-        // Audio
-        {"A_AAC",             AV_CODEC_ID_AAC},
-        {"A_AC3",             AV_CODEC_ID_AC3},
-        {"A_ALAC",            AV_CODEC_ID_ALAC},
-        {"A_DTS",             AV_CODEC_ID_DTS},
-        {"A_EAC3",            AV_CODEC_ID_EAC3},
-        {"A_FLAC",            AV_CODEC_ID_FLAC},
-        {"A_MLP",             AV_CODEC_ID_MLP},
-        {"A_MPEG/L1",         AV_CODEC_ID_MP1},
-        {"A_MPEG/L2",         AV_CODEC_ID_MP2},
-        {"A_MPEG/L3",         AV_CODEC_ID_MP3},
-        {"A_OPUS",            AV_CODEC_ID_OPUS},
-        {"A_TRUEHD",          AV_CODEC_ID_TRUEHD},
-        {"A_TTA1",            AV_CODEC_ID_TTA},
-        {"A_VORBIS",          AV_CODEC_ID_VORBIS},
-        {"A_WAVPACK4",        AV_CODEC_ID_WAVPACK},
+		// Audio
+		{"A_AAC",             AV_CODEC_ID_AAC},
+		{"A_AC3",             AV_CODEC_ID_AC3},
+		{"A_ALAC",            AV_CODEC_ID_ALAC},
+		{"A_DTS",             AV_CODEC_ID_DTS},
+		{"A_EAC3",            AV_CODEC_ID_EAC3},
+		{"A_FLAC",            AV_CODEC_ID_FLAC},
+		{"A_MLP",             AV_CODEC_ID_MLP},
+		{"A_MPEG/L1",         AV_CODEC_ID_MP1},
+		{"A_MPEG/L2",         AV_CODEC_ID_MP2},
+		{"A_MPEG/L3",         AV_CODEC_ID_MP3},
+		{"A_OPUS",            AV_CODEC_ID_OPUS},
+		{"A_TRUEHD",          AV_CODEC_ID_TRUEHD},
+		{"A_TTA1",            AV_CODEC_ID_TTA},
+		{"A_VORBIS",          AV_CODEC_ID_VORBIS},
+		{"A_WAVPACK4",        AV_CODEC_ID_WAVPACK},
 
-        // Untertitel
-        {"S_TEXT/ASCII",      AV_CODEC_ID_TEXT},
-        {"S_TEXT/UTF8",       AV_CODEC_ID_SUBRIP},
-        {"S_TEXT/ASS",        AV_CODEC_ID_ASS},
-        {"S_TEXT/SSA",        AV_CODEC_ID_ASS},
-        {"S_ASS",             AV_CODEC_ID_ASS},
-        {"S_SSA",             AV_CODEC_ID_ASS},
-        {"S_VOBSUB",          AV_CODEC_ID_DVD_SUBTITLE},
-        {"S_DVBSUB",          AV_CODEC_ID_DVB_SUBTITLE},
-        {"S_HDMV/PGS",        AV_CODEC_ID_HDMV_PGS_SUBTITLE},
-        {"D_WEBVTT/SUBTITLES",    AV_CODEC_ID_WEBVTT},
-        {"D_WEBVTT/CAPTIONS",     AV_CODEC_ID_WEBVTT},
-        {"D_WEBVTT/DESCRIPTIONS", AV_CODEC_ID_WEBVTT},
-        {"D_WEBVTT/METADATA",     AV_CODEC_ID_WEBVTT},
-    };
+		// Untertitel
+		{"S_TEXT/ASCII",      AV_CODEC_ID_TEXT},
+		{"S_TEXT/UTF8",       AV_CODEC_ID_SUBRIP},
+		{"S_TEXT/ASS",        AV_CODEC_ID_ASS},
+		{"S_TEXT/SSA",        AV_CODEC_ID_ASS},
+		{"S_ASS",             AV_CODEC_ID_ASS},
+		{"S_SSA",             AV_CODEC_ID_ASS},
+		{"S_VOBSUB",          AV_CODEC_ID_DVD_SUBTITLE},
+		{"S_DVBSUB",          AV_CODEC_ID_DVB_SUBTITLE},
+		{"S_HDMV/PGS",        AV_CODEC_ID_HDMV_PGS_SUBTITLE},
+		{"D_WEBVTT/SUBTITLES",    AV_CODEC_ID_WEBVTT},
+		{"D_WEBVTT/CAPTIONS",     AV_CODEC_ID_WEBVTT},
+		{"D_WEBVTT/DESCRIPTIONS", AV_CODEC_ID_WEBVTT},
+		{"D_WEBVTT/METADATA",     AV_CODEC_ID_WEBVTT},
+	};
 
-    const auto it = mapping.find(id);
-    return it != mapping.end() ? it->second : AV_CODEC_ID_NONE;
+	const std::unordered_map<std::string, AVCodecID>::const_iterator it = mapping.find(id);
+
+	return it != mapping.end() ? it->second : AV_CODEC_ID_NONE;
 }
 
 static AVMediaType matroskaCodecIdToAvMediaType(const std::string& id)
 {
-    if (id.compare(0, 2, "V_") == 0)
-        return AVMEDIA_TYPE_VIDEO;
+	if (id.compare(0, 2, "V_") == 0)
+	{
+		return AVMEDIA_TYPE_VIDEO;
+	}
 
-    if (id.compare(0, 2, "A_") == 0)
-        return AVMEDIA_TYPE_AUDIO;
+	if (id.compare(0, 2, "A_") == 0)
+	{
+		return AVMEDIA_TYPE_AUDIO;
+	}
 
-    if (id.compare(0, 2, "S_") == 0 || id.compare(0, 9, "D_WEBVTT/") == 0)
-        return AVMEDIA_TYPE_SUBTITLE;
+	if ((id.compare(0, 2, "S_") == 0) || (id.compare(0, 9, "D_WEBVTT/") == 0))
+	{
+		return AVMEDIA_TYPE_SUBTITLE;
+	}
 
-    return AVMEDIA_TYPE_UNKNOWN;
+	return AVMEDIA_TYPE_UNKNOWN;
 }
 
 static int fillCodecParameters(const TrackConverter::TrackInfo& track, AVCodecParameters* par)
 {
-    if (!par)
-        return AVERROR(EINVAL);
+	if (!par)
+	{
+		return AVERROR(EINVAL);
+	}
 
-    par->codec_type = matroskaCodecIdToAvMediaType(track.codecId);
-    par->codec_id   = matroskaCodecIdToAvCodecId(track.codecId);
+	par->codec_type = matroskaCodecIdToAvMediaType(track.codecId);
+	par->codec_id   = matroskaCodecIdToAvCodecId(track.codecId);
 
-    if (par->codec_type == AVMEDIA_TYPE_VIDEO) {
-        if (track.width > INT_MAX || track.height > INT_MAX)
-            return AVERROR(EINVAL);
+	if (par->codec_type == AVMEDIA_TYPE_VIDEO)
+	{
+		if ((track.width > INT_MAX) || (track.height > INT_MAX))
+		{
+			return AVERROR(EINVAL);
+		}
 
-        par->width  = static_cast<int>(track.width);
-        par->height = static_cast<int>(track.height);
-    }
+		par->width  = static_cast<int>(track.width);
+		par->height = static_cast<int>(track.height);
+	}
 	// else if (par->codec_type == AVMEDIA_TYPE_AUDIO)
 	// {
-    //     if (track.sampleRate <= 0 || track.channels <= 0)
-    //         return AVERROR(EINVAL);
+	// if (track.sampleRate <= 0 || track.channels <= 0)
+	// return AVERROR(EINVAL);
 
-    //     par->sample_rate = track.sampleRate;
-    //     av_channel_layout_default(&par->ch_layout, track.channels);
+	// par->sample_rate = track.sampleRate;
+	// av_channel_layout_default(&par->ch_layout, track.channels);
 
-    //     // Matroska CodecDelay ist eine Zeit; initial_padding ist in Samples.
-    //     if (track.codecDelay > 0) {
-    //         if (track.codecDelay > static_cast<uint64_t>(INT64_MAX))
-    //             return AVERROR(EINVAL);
+	//// Matroska CodecDelay ist eine Zeit; initial_padding ist in Samples.
+	// if (track.codecDelay > 0) {
+	// if (track.codecDelay > static_cast<uint64_t>(INT64_MAX))
+	// return AVERROR(EINVAL);
 
-    //         const int64_t samples = av_rescale_rnd(
-    //             static_cast<int64_t>(track.codecDelay),
-    //             track.sampleRate,
-    //             1'000'000'000LL,
-    //             AV_ROUND_NEAR_INF);
+	// const int64_t samples = av_rescale_rnd(
+	// static_cast<int64_t>(track.codecDelay),
+	// track.sampleRate,
+	// 1'000'000'000LL,
+	// AV_ROUND_NEAR_INF);
 
-    //         if (samples < 0 || samples > INT_MAX)
-    //             return AVERROR(EINVAL);
+	// if (samples < 0 || samples > INT_MAX)
+	// return AVERROR(EINVAL);
 
-    //         par->initial_padding = static_cast<int>(samples);
-    //     }
-    // }
+	// par->initial_padding = static_cast<int>(samples);
+	// }
+	// }
 
-    if (!track.codecPrivate.empty()) {
-        if (track.codecPrivate.size() >
-            static_cast<size_t>(INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE)) {
-            return AVERROR(EINVAL);
-        }
+	if (!track.codecPrivate.empty())
+	{
+		if (track.codecPrivate.size() >
+		    static_cast<size_t>(INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE))
+		{
+			return AVERROR(EINVAL);
+		}
 
-        par->extradata = static_cast<uint8_t*>(
-            av_mallocz(track.codecPrivate.size() + AV_INPUT_BUFFER_PADDING_SIZE));
-        if (!par->extradata)
-            return AVERROR(ENOMEM);
+		par->extradata = static_cast<uint8_t*>(
+			av_mallocz(track.codecPrivate.size() + AV_INPUT_BUFFER_PADDING_SIZE));
 
-        memcpy(par->extradata,
-                    track.codecPrivate.data(),
-                    track.codecPrivate.size());
-        par->extradata_size = static_cast<int>(track.codecPrivate.size());
-    }
+		if (!par->extradata)
+		{
+			return AVERROR(ENOMEM);
+		}
 
-    return 0;
+		memcpy(par->extradata,
+		       track.codecPrivate.data(),
+		       track.codecPrivate.size());
+		par->extradata_size = static_cast<int>(track.codecPrivate.size());
+	}
+
+	return 0;
 }
 
 static int makeTimeBase(const uint64_t timestampScale, AVRational& timeBase)
 {
-    if (timestampScale == 0 ||
-        timestampScale > static_cast<uint64_t>(INT64_MAX)) {
-        return AVERROR(EINVAL);
-    }
+	if ((timestampScale == 0) ||
+	    (timestampScale > static_cast<uint64_t>(INT64_MAX)))
+	{
+		return AVERROR(EINVAL);
+	}
 
-    // Ein Matroska-Tick entspricht timestampScale / 1e9 Sekunden.
-    av_reduce(&timeBase.num, &timeBase.den,
-              static_cast<int64_t>(timestampScale),
-              1'000'000'000LL, INT_MAX);
+	// Ein Matroska-Tick entspricht timestampScale / 1e9 Sekunden.
+	av_reduce(&timeBase.num, &timeBase.den,
+	          static_cast<int64_t>(timestampScale),
+	          1'000'000'000LL, INT_MAX);
 
-    return timeBase.num > 0 && timeBase.den > 0
-        ? 0
-        : AVERROR(EINVAL);
+	return timeBase.num > 0 && timeBase.den > 0
+	    ? 0
+	    : AVERROR(EINVAL);
 }
 
 TrackMuxer::TrackMuxer(const std::string& file_name)
@@ -438,9 +453,9 @@ bool TrackMuxer::get_live_packet(TrackFile& track, AVPacket* packet)
 	std::unique_lock<std::mutex> lock(track.mutex);
 
 	track.condition.wait(lock, [&track]()
-		{
-			return !track.queue.empty() || track.finished;
-		});
+	{
+		return !track.queue.empty() || track.finished;
+	});
 
 	if (track.queue.empty())
 	{
@@ -564,7 +579,7 @@ void TrackMuxer::mux(void)
 			{
 				const TrackFile& track = m_tracks[i];
 
-				if (track.eof || track.packet->data == nullptr)
+				if (track.eof || (track.packet->data == nullptr))
 				{
 					continue;
 				}
@@ -675,8 +690,8 @@ void TrackMuxer::cleanup(void)
 
 	/* Cleanup output. */
 	if ((m_output_context != nullptr) &&
-		(m_output_context->pb != nullptr) &&
-		!(m_output_context->oformat->flags & AVFMT_NOFILE))
+	    (m_output_context->pb != nullptr) &&
+	    !(m_output_context->oformat->flags & AVFMT_NOFILE))
 	{
 		avio_closep(&m_output_context->pb);
 	}
