@@ -75,9 +75,10 @@ class PGSStream {
 		/** encodes one frame as stream of PGS data.
 		 * @param frame frame to be stored.
 		 * @param sbs_double flag for doubling all subtitles for SBS frame layout.
+		 * @param header header (ID, PTS, DTS) is only written when true.
 		 * @return encoded data stream.
 		 */
-		std::vector<uint8_t> saveFrame(const PGSFrame& frame, const bool sbs_double);
+		std::vector<uint8_t> saveFrame(const PGSFrame& frame, const bool sbs_double, const bool header);
 
 	private:
 		/** segments stored inside a PGS stream. */
@@ -185,13 +186,15 @@ class PGSStream {
 		 * @param dts decoding timestamp of segment, may always be zero.
 		 * @param type segment type.
 		 * @param payload segment data.
+		 * @param header header (ID, PTS, DTS) is only written when true.
 		 */
 		void writeSegment(
 			std::vector<uint8_t>& file,
 			const uint32_t pts,
 			const uint32_t dts,
 			const segment_t type,
-			const std::vector<uint8_t>& payload) const;
+			const std::vector<uint8_t>& payload,
+			const bool header) const;
 
 		/** write Presentation Composition Segment.
 		 * @param file output buffer.
@@ -204,6 +207,7 @@ class PGSStream {
 		 * @param paletteId palette ID, usually zero.
 		 * @param frame_copies number of copies to display. 0 means: hide all previous frames.
 		 * 1: show regular frame. 2: double the frame width and show frame on both SBS images.
+		 * @param header header (ID, PTS, DTS) is only written when true.
 		 */
 		void writePCS(
 			std::vector<uint8_t>& file,
@@ -214,29 +218,34 @@ class PGSStream {
 			const composition_t compositionState,
 			const bool paletteOnlyUpdate,
 			const uint8_t paletteId,
-			const uint8_t frame_copies) const;
+			const uint8_t frame_copies,
+			const bool header) const;
 
 		/** write Window Definition Segment.
 		 * @param file output buffer.
 		 * @param frame current frame to be encoded.
 		 * @param pts display timestamp of segment.
+		 * @param header header (ID, PTS, DTS) is only written when true.
 		 */
 		void writeWDS(
 			std::vector<uint8_t>& file,
 			const PGSFrame& frame,
-			const uint32_t pts) const;
+			const uint32_t pts,
+			const bool header) const;
 
 		/** write Palette Definition Segment.
 		 * @param file output buffer.
 		 * @param palette palette to be stored in segment.
 		 * @param pts display timestamp of segment.
 		 * @param paletteId palette ID, usually zero.
+		 * @param header header (ID, PTS, DTS) is only written when true.
 		 */
 		void writePDS(
 			std::vector<uint8_t>& file,
 			const Palette& palette,
 			const uint32_t pts,
-			const uint8_t paletteId) const;
+			const uint8_t paletteId,
+			const bool header) const;
 
 		/** write Object Definition Segment containing an RLE encoded frame.
 		 * @param file output buffer.
@@ -245,6 +254,7 @@ class PGSStream {
 		 * @param height height of object.
 		 * @param rle RLE encoded palette image.
 		 * @param pts display timestamp of segment.
+		 * @param header header (ID, PTS, DTS) is only written when true.
 		 */
 		void writeODS(
 			std::vector<uint8_t>& file,
@@ -252,5 +262,6 @@ class PGSStream {
 			const uint16_t width,
 			const uint16_t height,
 			const std::vector<uint8_t>& rle,
-			const uint32_t pts) const;
+			const uint32_t pts,
+			const bool header) const;
 };

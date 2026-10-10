@@ -692,7 +692,8 @@ void PGSStream::writeSegment(
 	const uint32_t pts,
 	const uint32_t dts,
 	const segment_t type,
-	const std::vector<uint8_t>& payload) const
+	const std::vector<uint8_t>& payload,
+	const bool header) const
 {
 	if (payload.size() > 0xffff)
 	{
@@ -701,11 +702,14 @@ void PGSStream::writeSegment(
 
 	// Segmentkopf:
 	// "PG", PTS, DTS, Typ, Länge
-	buffer.push_back('P');
-	buffer.push_back('G');
+	if (header)
+	{
+		buffer.push_back('P');
+		buffer.push_back('G');
 
-	putBE32(buffer, pts);
-	putBE32(buffer, dts);
+		putBE32(buffer, pts);
+		putBE32(buffer, dts);
+	}
 
 	buffer.push_back(type);
 	putBE16(buffer, static_cast<uint16_t>(payload.size()));
@@ -722,7 +726,8 @@ void PGSStream::writePCS(
 	const composition_t compositionState,
 	const bool paletteOnlyUpdate,
 	const uint8_t paletteId,
-	const uint8_t frame_copies) const
+	const uint8_t frame_copies,
+	const bool header) const
 {
 	std::vector<uint8_t> payload;
 
@@ -757,13 +762,14 @@ void PGSStream::writePCS(
 		putBE16(payload, frame.position.y);
 	}
 
-	writeSegment(buffer, pts, 0, PCS, payload);
+	writeSegment(buffer, pts, 0, PCS, payload, header);
 }
 
 void PGSStream::writeWDS(
 	std::vector<uint8_t>& buffer,
 	const PGSFrame& frame,
-	const uint32_t pts) const
+	const uint32_t pts,
+	const bool header) const
 {
 	std::vector<uint8_t> payload;
 
@@ -779,14 +785,15 @@ void PGSStream::writeWDS(
 	putBE16(payload, frame.size.x);
 	putBE16(payload, frame.size.y);
 
-	writeSegment(buffer, pts, 0, WDS, payload);
+	writeSegment(buffer, pts, 0, WDS, payload, header);
 }
 
 void PGSStream::writePDS(
 	std::vector<uint8_t>& buffer,
 	const Palette& palette,
 	const uint32_t pts,
-	const uint8_t paletteId) const
+	const uint8_t paletteId,
+	const bool header) const
 {
 	std::vector<uint8_t> payload;
 
@@ -807,7 +814,7 @@ void PGSStream::writePDS(
 		payload.push_back(static_cast<uint8_t>(yuva));          // Alpha
 	}
 
-	writeSegment(buffer, pts, 0, PDS, payload);
+	writeSegment(buffer, pts, 0, PDS, payload, header);
 }
 
 void PGSStream::writeODS(
@@ -816,7 +823,8 @@ void PGSStream::writeODS(
 	const uint16_t width,
 	const uint16_t height,
 	const std::vector<uint8_t>& rle,
-	const uint32_t pts) const
+	const uint32_t pts,
+	const bool header) const
 {
 	/*
 	    ODS-Daten:
@@ -880,13 +888,13 @@ void PGSStream::writeODS(
 			rle.begin() + static_cast<std::ptrdiff_t>(offset),
 			rle.begin() + static_cast<std::ptrdiff_t>(offset + chunk));
 
-		writeSegment(buffer, pts, 0, ODS, payload);
+		writeSegment(buffer, pts, 0, ODS, payload, header);
 
 		offset += chunk;
 	}
 }
 
-std::vector<uint8_t> PGSStream::saveFrame(const PGSFrame& frame, const bool sbs_double)
+std::vector<uint8_t> PGSStream::saveFrame(const PGSFrame& frame, const bool sbs_double,	const bool header)
 {
 	std::vector<uint8_t> payload;
 
@@ -920,17 +928,17 @@ std::vector<uint8_t> PGSStream::saveFrame(const PGSFrame& frame, const bool sbs_
 	const std::vector<uint8_t> rle = encodeRle(frame.size.x, frame.size.y, indexed);
 
 	const uint16_t objectId = 0;
-	writePCS(payload, frame, objectId, startPts, m_composition_id, compositionState, false, 0, sbs_double ? 2 : 1);
+	writePCS(payload, frame, objectId, startPts, m_composition_id, compositionState, false, 0, sbs_double ? 2 : 1, header);
 	m_composition_id++;
-	writeWDS(payload, frame, startPts);
-	writePDS(payload, palette, startPts, 0);
-	writeODS(payload, objectId, frame.size.x, frame.size.y, rle, startPts);
-	writeSegment(payload, startPts, 0, END, {});
+	writeWDS(payload, frame, startPts, header);
+	writePDS(payload, palette, startPts, 0, header);
+	writeODS(payload, objectId, frame.size.x, frame.size.y, rle, startPts, header);
+	writeSegment(payload, startPts, 0, END, {}, header);
 
 	// write empty display set to clear all subtitles.
-	writePCS(payload, frame, objectId, endPts, m_composition_id, COMPOSITION_NORMAL, false, 0, 0);
+	writePCS(payload, frame, objectId, endPts, m_composition_id, COMPOSITION_NORMAL, false, 0, 0, header);
 	m_composition_id++;
-	writeSegment(payload, endPts, 0, END, {});
+	writeSegment(payload, endPts, 0, END, {}, header);
 
 	return payload;
 }

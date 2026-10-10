@@ -286,7 +286,7 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 	{
 		PGSStream::PGSFrame frame = m_pgs_stream.getNextFrame();
 		append_ocr(frame);
-		const std::vector<uint8_t> payload = m_pgs_stream.saveFrame(frame, true);
+		const std::vector<uint8_t> payload = m_pgs_stream.saveFrame(frame, true, true);
 		write(payload.data(), payload.size());
 	}
 
