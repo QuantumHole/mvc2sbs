@@ -44,6 +44,14 @@ class PGSStream {
 			std::vector<uint32_t> pixels = {};   // 32bit RGBA values
 		};
 
+		/** PGS segment buffer. */
+		struct PGSSegment
+		{
+			uint32_t pts;
+			uint32_t dts;
+			std::vector<uint8_t> payload;
+		};
+
 		/** adds an arbitrary amount of data to the stream.
 		 * If the stream contains a complete block, it is decoded as far as possible.
 		 * Complete frames are available immediately when decoded.
@@ -75,10 +83,16 @@ class PGSStream {
 		/** encodes one frame as stream of PGS data.
 		 * @param frame frame to be stored.
 		 * @param sbs_double flag for doubling all subtitles for SBS frame layout.
-		 * @param header header (ID, PTS, DTS) is only written when true.
-		 * @return encoded data stream.
+		 * @return list of PGS segments.
 		 */
-		std::vector<uint8_t> saveFrame(const PGSFrame& frame, const bool sbs_double, const bool header);
+		std::vector<PGSSegment> saveFrame(const PGSFrame& frame, const bool sbs_double);
+
+		/** serialize segment into a stream of bytes.
+		 * @param segment input segment.
+		 * @param header header (ID, PTS, DTS) is only written when true.
+		 * @return serialized segment.
+		 */
+		std::vector<uint8_t> serializeSegment(const PGSSegment& segment, const bool header) const;
 
 	private:
 		/** segments stored inside a PGS stream. */
@@ -181,23 +195,19 @@ class PGSStream {
 		std::vector<uint8_t> makeIndexedPixels(const PGSFrame& frame, Palette& palette) const;
 
 		/** write general PGS segment into buffer.
-		 * @param file output buffer.
 		 * @param pts display timestamp of segment.
 		 * @param dts decoding timestamp of segment, may always be zero.
 		 * @param type segment type.
 		 * @param payload segment data.
-		 * @param header header (ID, PTS, DTS) is only written when true.
+		 * @return PGS segment container.
 		 */
-		void writeSegment(
-			std::vector<uint8_t>& file,
+		PGSSegment writeSegment(
 			const uint32_t pts,
 			const uint32_t dts,
 			const segment_t type,
-			const std::vector<uint8_t>& payload,
-			const bool header) const;
+			const std::vector<uint8_t>& payload) const;
 
 		/** write Presentation Composition Segment.
-		 * @param file output buffer.
 		 * @param frame current frame to be encoded.
 		 * @param objectId ID of object.
 		 * @param pts display timestamp of segment.
@@ -207,10 +217,9 @@ class PGSStream {
 		 * @param paletteId palette ID, usually zero.
 		 * @param frame_copies number of copies to display. 0 means: hide all previous frames.
 		 * 1: show regular frame. 2: double the frame width and show frame on both SBS images.
-		 * @param header header (ID, PTS, DTS) is only written when true.
+		 * @return PGS segment container.
 		 */
-		void writePCS(
-			std::vector<uint8_t>& file,
+		PGSSegment writePCS(
 			const PGSFrame& frame,
 			const uint16_t objectId,
 			const uint32_t pts,
@@ -218,50 +227,40 @@ class PGSStream {
 			const composition_t compositionState,
 			const bool paletteOnlyUpdate,
 			const uint8_t paletteId,
-			const uint8_t frame_copies,
-			const bool header) const;
+			const uint8_t frame_copies) const;
 
 		/** write Window Definition Segment.
-		 * @param file output buffer.
 		 * @param frame current frame to be encoded.
 		 * @param pts display timestamp of segment.
-		 * @param header header (ID, PTS, DTS) is only written when true.
+		 * @return PGS segment container.
 		 */
-		void writeWDS(
-			std::vector<uint8_t>& file,
+		PGSSegment writeWDS(
 			const PGSFrame& frame,
-			const uint32_t pts,
-			const bool header) const;
+			const uint32_t pts) const;
 
 		/** write Palette Definition Segment.
-		 * @param file output buffer.
 		 * @param palette palette to be stored in segment.
 		 * @param pts display timestamp of segment.
 		 * @param paletteId palette ID, usually zero.
-		 * @param header header (ID, PTS, DTS) is only written when true.
+		 * @return PGS segment container.
 		 */
-		void writePDS(
-			std::vector<uint8_t>& file,
+		PGSSegment writePDS(
 			const Palette& palette,
 			const uint32_t pts,
-			const uint8_t paletteId,
-			const bool header) const;
+			const uint8_t paletteId) const;
 
 		/** write Object Definition Segment containing an RLE encoded frame.
-		 * @param file output buffer.
 		 * @param objectId ID of object.
 		 * @param width width of object.
 		 * @param height height of object.
 		 * @param rle RLE encoded palette image.
 		 * @param pts display timestamp of segment.
-		 * @param header header (ID, PTS, DTS) is only written when true.
+		 * @return list of PGS segment containers.
 		 */
-		void writeODS(
-			std::vector<uint8_t>& file,
+		std::vector<PGSSegment> writeODS(
 			const uint16_t objectId,
 			const uint16_t width,
 			const uint16_t height,
 			const std::vector<uint8_t>& rle,
-			const uint32_t pts,
-			const bool header) const;
+			const uint32_t pts) const;
 };

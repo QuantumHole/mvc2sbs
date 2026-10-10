@@ -687,38 +687,26 @@ std::vector<uint8_t> PGSStream::makeIndexedPixels(
 	return indexed;
 }
 
-void PGSStream::writeSegment(
-	std::vector<uint8_t>& buffer,
+PGSStream::PGSSegment PGSStream::writeSegment(
 	const uint32_t pts,
 	const uint32_t dts,
 	const segment_t type,
-	const std::vector<uint8_t>& payload,
-	const bool header) const
+	const std::vector<uint8_t>& payload) const
 {
 	if (payload.size() > 0xffff)
 	{
 		throw std::runtime_error("PGS-Segment ist größer als 65535 Bytes");
 	}
 
-	// Segmentkopf:
-	// "PG", PTS, DTS, Typ, Länge
-	if (header)
-	{
-		buffer.push_back('P');
-		buffer.push_back('G');
+	PGSSegment segment = {pts, dts, {type}};
 
-		putBE32(buffer, pts);
-		putBE32(buffer, dts);
-	}
+	putBE16(segment.payload, static_cast<uint16_t>(payload.size()));
+	segment.payload.insert(segment.payload.end(), payload.begin(), payload.end());
 
-	buffer.push_back(type);
-	putBE16(buffer, static_cast<uint16_t>(payload.size()));
-
-	buffer.insert(buffer.end(), payload.begin(), payload.end());
+	return segment;
 }
 
-void PGSStream::writePCS(
-	std::vector<uint8_t>& buffer,
+PGSStream::PGSSegment PGSStream::writePCS(
 	const PGSFrame& frame,
 	const uint16_t objectId,
 	const uint32_t pts,
@@ -726,8 +714,7 @@ void PGSStream::writePCS(
 	const composition_t compositionState,
 	const bool paletteOnlyUpdate,
 	const uint8_t paletteId,
-	const uint8_t frame_copies,
-	const bool header) const
+	const uint8_t frame_copies) const
 {
 	std::vector<uint8_t> payload;
 
@@ -762,14 +749,10 @@ void PGSStream::writePCS(
 		putBE16(payload, frame.position.y);
 	}
 
-	writeSegment(buffer, pts, 0, PCS, payload, header);
+	return writeSegment(pts, 0, PCS, payload);
 }
 
-void PGSStream::writeWDS(
-	std::vector<uint8_t>& buffer,
-	const PGSFrame& frame,
-	const uint32_t pts,
-	const bool header) const
+PGSStream::PGSSegment PGSStream::writeWDS(const PGSFrame& frame, const uint32_t pts) const
 {
 	std::vector<uint8_t> payload;
 
@@ -785,15 +768,13 @@ void PGSStream::writeWDS(
 	putBE16(payload, frame.size.x);
 	putBE16(payload, frame.size.y);
 
-	writeSegment(buffer, pts, 0, WDS, payload, header);
+	return writeSegment(pts, 0, WDS, payload);
 }
 
-void PGSStream::writePDS(
-	std::vector<uint8_t>& buffer,
+PGSStream::PGSSegment PGSStream::writePDS(
 	const Palette& palette,
 	const uint32_t pts,
-	const uint8_t paletteId,
-	const bool header) const
+	const uint8_t paletteId) const
 {
 	std::vector<uint8_t> payload;
 
@@ -814,17 +795,15 @@ void PGSStream::writePDS(
 		payload.push_back(static_cast<uint8_t>(yuva));          // Alpha
 	}
 
-	writeSegment(buffer, pts, 0, PDS, payload, header);
+	return writeSegment(pts, 0, PDS, payload);
 }
 
-void PGSStream::writeODS(
-	std::vector<uint8_t>& buffer,
+std::vector<PGSStream::PGSSegment> PGSStream::writeODS(
 	const uint16_t objectId,
 	const uint16_t width,
 	const uint16_t height,
 	const std::vector<uint8_t>& rle,
-	const uint32_t pts,
-	const bool header) const
+	const uint32_t pts) const
 {
 	/*
 	    ODS-Daten:
@@ -840,17 +819,17 @@ void PGSStream::writeODS(
 	 */
 
 	constexpr size_t maxPayload = 0xffff;
-	constexpr size_t odsHeader = 11; // 2+1+1+3+2+2
 
 	size_t offset = 0;
 	uint8_t version = 0;
+	std::vector<PGSSegment> segments;
 
 	while (offset < rle.size())
 	{
 		const bool first = offset == 0;
 
 		// Payload-Größe einschließlich ODS-Kopfdaten
-		const size_t headerSize = first ? odsHeader : 7;
+		const size_t headerSize = first ? 11 : 7;
 		const size_t maxData = maxPayload - headerSize;
 		const size_t chunk = std::min(maxData, rle.size() - offset);
 
@@ -888,16 +867,15 @@ void PGSStream::writeODS(
 			rle.begin() + static_cast<std::ptrdiff_t>(offset),
 			rle.begin() + static_cast<std::ptrdiff_t>(offset + chunk));
 
-		writeSegment(buffer, pts, 0, ODS, payload, header);
+		segments.push_back(writeSegment(pts, 0, ODS, payload));
 
 		offset += chunk;
 	}
+	return segments;
 }
 
-std::vector<uint8_t> PGSStream::saveFrame(const PGSFrame& frame, const bool sbs_double,	const bool header)
+std::vector<PGSStream::PGSSegment> PGSStream::saveFrame(const PGSFrame& frame, const bool sbs_double)
 {
-	std::vector<uint8_t> payload;
-
 	if ((frame.time.s < 0.0) || (frame.time.t <= frame.time.s))
 	{
 		throw std::runtime_error("invalid frame timestamps");
@@ -926,19 +904,48 @@ std::vector<uint8_t> PGSStream::saveFrame(const PGSFrame& frame, const bool sbs_
 	Palette palette;
 	const std::vector<uint8_t> indexed = makeIndexedPixels(frame, palette);
 	const std::vector<uint8_t> rle = encodeRle(frame.size.x, frame.size.y, indexed);
+	std::vector<PGSSegment> segments;
 
 	const uint16_t objectId = 0;
-	writePCS(payload, frame, objectId, startPts, m_composition_id, compositionState, false, 0, sbs_double ? 2 : 1, header);
+	PGSSegment seg;
+	seg = writePCS(frame, objectId, startPts, m_composition_id, compositionState, false, 0, sbs_double ? 2 : 1);
+	segments.push_back(seg);
 	m_composition_id++;
-	writeWDS(payload, frame, startPts, header);
-	writePDS(payload, palette, startPts, 0, header);
-	writeODS(payload, objectId, frame.size.x, frame.size.y, rle, startPts, header);
-	writeSegment(payload, startPts, 0, END, {}, header);
+
+	seg = writeWDS(frame, startPts);
+	segments.push_back(seg);
+	seg = writePDS(palette, startPts, 0);
+	segments.push_back(seg);
+	std::vector<PGSSegment> ods = writeODS(objectId, frame.size.x, frame.size.y, rle, startPts);
+	segments.insert(segments.end(), ods.begin(), ods.end());
+	seg = writeSegment(startPts, 0, END, {});
+	segments.push_back(seg);
 
 	// write empty display set to clear all subtitles.
-	writePCS(payload, frame, objectId, endPts, m_composition_id, COMPOSITION_NORMAL, false, 0, 0, header);
+	seg = writePCS(frame, objectId, endPts, m_composition_id, COMPOSITION_NORMAL, false, 0, 0);
+	segments.push_back(seg);
 	m_composition_id++;
-	writeSegment(payload, endPts, 0, END, {}, header);
+	seg = writeSegment(endPts, 0, END, {});
+	segments.push_back(seg);
 
-	return payload;
+	return segments;
+}
+
+std::vector<uint8_t> PGSStream::serializeSegment(const PGSSegment& segment, const bool header) const
+{
+	std::vector<uint8_t> buffer;
+
+	// Segmentkopf:
+	// "PG", PTS, DTS, Type, Length, ...(Segment Data)...
+	if (header)
+	{
+		buffer.push_back('P');
+		buffer.push_back('G');
+
+		putBE32(buffer, segment.pts);
+		putBE32(buffer, segment.dts);
+	}
+
+	buffer.insert(buffer.end(), segment.payload.begin(), segment.payload.end());
+	return buffer;
 }

@@ -257,7 +257,7 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 		if (segmentSize > size - offset)
 		{
 			std::cerr
-			    << "    PGS-Segment außerhalb des Buffers: "
+			    << "    PGS-Segment outside buffer: "
 			    << "type=0x"
 			    << std::hex
 			    << static_cast<unsigned int>(segmentType)
@@ -285,14 +285,6 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 
 		pgsdata.insert(pgsdata.end(), frame_data.begin(), frame_data.end());
 
-		muxer.push(
-			mux_id(),
-			frame_data,
-			static_cast<int64_t>(info.pts / track_info().timestampScale),
-			0,
-			static_cast<int64_t>(info.duration / track_info().timestampScale),
-			0);
-
 		offset += segmentSize;
 	}
 
@@ -302,8 +294,25 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 	{
 		PGSStream::PGSFrame frame = m_pgs_stream.getNextFrame();
 		append_ocr(frame);
-		const std::vector<uint8_t> payload = m_pgs_stream.saveFrame(frame, true, true);
-		write(payload.data(), payload.size());
+
+		const std::vector<PGSStream::PGSSegment> segments = m_pgs_stream.saveFrame(frame, true);
+		for (const PGSStream::PGSSegment& seg: segments)
+		{
+			/* write full PGS stream into output file. */
+			std::vector<uint8_t> segdata = m_pgs_stream.serializeSegment(seg, true);
+			write(segdata.data(), segdata.size());
+
+			/* write segments without headers into muxer */
+			segdata = m_pgs_stream.serializeSegment(seg, false);
+			muxer.push(
+				mux_id(),
+				segdata,
+				static_cast<int64_t>(info.pts / track_info().timestampScale),
+				0,
+				static_cast<int64_t>(info.duration / track_info().timestampScale),
+				0);
+
+		}
 	}
 
 	return offset;
