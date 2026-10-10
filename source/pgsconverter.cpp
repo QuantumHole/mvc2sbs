@@ -272,9 +272,9 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 		muxer.push(
 			mux_id(),
 			frame_data,
-			static_cast<int64_t>(info.pts / 1e6),
+			static_cast<int64_t>(info.pts / track_info().timestampScale),
 			0,
-			0,
+			static_cast<int64_t>(info.duration / track_info().timestampScale),
 			0);
 
 		offset += segmentSize;

@@ -201,6 +201,21 @@ static uint64_t GetDefaultDuration(const libmatroska::KaxTrackEntry* track)
 	    : 0;
 }
 
+static uint64_t GetGlobalTimecodeScale(const libmatroska::KaxTrackEntry* track)
+{
+    constexpr uint64_t defaultScale = 1'000'000; // ns
+	if (!track)
+	{
+        return defaultScale;
+	}
+
+	const libmatroska::KaxTimecodeScale* element = FindElement<libmatroska::KaxTimecodeScale>(*track);
+
+	return element
+	    ? static_cast<uint64_t>(element->GetValue())
+	    : defaultScale;
+}
+
 static std::string GetTrackLanguage(const libmatroska::KaxTrackEntry* track)
 {
 	if (!track)
@@ -272,7 +287,7 @@ static TrackConverter::TrackInfo GetH264TrackInfo(const libmatroska::KaxTrackEnt
 	result.height = GetVideoHeight(track);
 	result.codecDelay = GetCodecDelay(track);
 	result.defaultDuration = GetDefaultDuration(track);
-	// result.timestampScale = track->GlobalTimecodeScale();
+	result.timestampScale = GetGlobalTimecodeScale(track);
 	result.language = GetTrackLanguage(track);
 	result.title = GetTrackTitle(track);
 
