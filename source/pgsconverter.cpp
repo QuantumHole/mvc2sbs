@@ -173,7 +173,8 @@ PGSConverter::PGSConverter(const std::string& input_file_name, const TrackInfo& 
 	m_pgs_stream(),
 	m_output_srt(input_file_name + "." + std::to_string(info.trackNumber) + "." + info.language + ".srt"),
 	m_ocr(info.language),
-	m_line_index(0)
+	m_line_index(0),
+	m_mux_id_srt(0)
 {
 }
 
@@ -187,26 +188,41 @@ void PGSConverter::append_ocr(const PGSStream::PGSFrame& frame)
 {
 	const std::string text = m_ocr.read_text(frame.pixels, frame.size.x, frame.size.y);
 
-	if (text.empty())
-	{
-		const std::string filename = "unreadable." + track_info().language + "/" + timestamp(frame.time.s) + "-" + timestamp(frame.time.t) + ".png";
-		saveRGBA32AsPNG(filename, frame.pixels, frame.size.x, frame.size.y);
-	}
-
 	if (m_save_images)
 	{
 		const std::string filename = "subtitles." + track_info().language + "/" + timestamp(frame.time.s) + "-" + timestamp(frame.time.t) + ".png";
 		saveRGBA32AsPNG(filename, frame.pixels, frame.size.x, frame.size.y);
 	}
 
-	if (!text.empty())
+	if (text.empty())
 	{
-		// passed++;
-		m_output_srt << m_line_index << std::endl;
-		m_output_srt << timestamp(frame.time.s) << " --> " << timestamp(frame.time.t) << std::endl;
-		m_output_srt << text << std::endl << std::endl;
-		m_line_index++;
+		const std::string filename = "unreadable." + track_info().language + "/" + timestamp(frame.time.s) + "-" + timestamp(frame.time.t) + ".png";
+		saveRGBA32AsPNG(filename, frame.pixels, frame.size.x, frame.size.y);
+		return;
 	}
+
+	m_output_srt << m_line_index << std::endl;
+	m_output_srt << timestamp(frame.time.s) << " --> " << timestamp(frame.time.t) << std::endl;
+	m_output_srt << text << std::endl << std::endl;
+	m_line_index++;
+
+	std::vector<uint8_t> data(text.begin(), text.end());
+	TrackMuxer& muxer = TrackMuxer::instance();
+	if (m_mux_id_srt == 0)
+	{
+		TrackInfo info = track_info();
+		info.codecId = "S_TEXT/UTF8";
+		info.title += " SRT";
+
+		m_mux_id_srt = muxer.add_live_track(info);
+	}
+	muxer.push(
+		m_mux_id_srt,
+		data,
+		static_cast<int64_t>(frame.time.s * 1e9) / static_cast<int64_t>(track_info().timestampScale),
+		0,
+		static_cast<int64_t>((frame.time.t - frame.time.s) * 1e9) / static_cast<int64_t>(track_info().timestampScale),
+		0);
 }
 
 size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameInfo& info)
@@ -291,4 +307,12 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 	}
 
 	return offset;
+}
+
+void PGSConverter::finish_processing(void)
+{
+	if (m_mux_id_srt != 0)
+	{
+		TrackMuxer::instance().finish_track(m_mux_id_srt);
+	}
 }

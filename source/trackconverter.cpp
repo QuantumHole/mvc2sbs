@@ -153,6 +153,8 @@ void TrackConverter::run_loop(void)
 			          << std::endl;
 		}
 	}
+
+	finish_processing();
 }
 
 void TrackConverter::runner(TrackConverter* instance)
@@ -208,6 +210,11 @@ void TrackConverter::write(const uint8_t* data, const size_t size)
 	{
 		throw std::runtime_error("failed writing SUP file");
 	}
+}
+
+void TrackConverter::finish_processing(void)
+{
+	// nothing to do usually.
 }
 
 void TrackConverter::finish(void)

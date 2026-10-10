@@ -18,11 +18,15 @@ class PGSConverter : public TrackConverter
 		std::ofstream m_output_srt;   ///< output stream for the translation into SRT format.
 		OCR m_ocr;                    ///< interface to tesseract API.
 		size_t m_line_index;          ///< message counter for the SRT output.
+		size_t m_mux_id_srt;          ///< muxer ID for the OCR text track.
 
 		/** perform OCR, store images, write SRT as configured.
 		 * @param frame input frame for all configured actions.
 		 */
 		void append_ocr(const PGSStream::PGSFrame& frame);
+
+		/** called when processing loop has finished. */
+		void finish_processing(void) override;
 
 	public:
 		/** constructor.

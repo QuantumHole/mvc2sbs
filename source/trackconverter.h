@@ -133,6 +133,9 @@ class TrackConverter
 		 */
 		virtual size_t process_data(const std::vector<uint8_t>& data, const FrameInfo& info) = 0;
 
+		/** called when processing loop has finished. */
+		virtual void finish_processing(void);
+
 	private:
 		const std::string m_input_file_name;       ///< file name of the input file, used to derive the output file name.
 		const TrackInfo m_track_info;              ///< track meta data.
@@ -142,7 +145,7 @@ class TrackConverter
 		std::thread m_thread;                      ///< thread variable for the thread running process_data().
 		std::condition_variable m_data_available;  ///< condition variable for signalling when more input data for the thread is available.
 		bool m_keep_running;                       ///< flag for stopping and exiting the thread.
-		const size_t m_mux_track_id;                     ///< track ID for the output muxer.
+		const size_t m_mux_track_id;               ///< track ID for the output muxer.
 
 		/** generate a unique output file name from input meta data.
 		 * @return file name for the output stream target.
