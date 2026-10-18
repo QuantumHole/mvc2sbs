@@ -324,25 +324,17 @@ MKVStreamer::MKVStreamer(const std::string& filename) :
 	m_input_file_size(0),
 	m_converters(),
 	m_last_status_time(std::chrono::steady_clock::now()),
-	m_muxer(TrackMuxer::instance(m_input_file_name + ".muxed.mkv"))
+	m_muxer(TrackMuxer::instance(m_input_file_name + ".muxed.mkv")),
+	m_thread_mux()
 {
 }
 
 MKVStreamer::~MKVStreamer(void)
 {
-}
-
-void MKVStreamer::finish(void)
-{
-	// threads need a little time to settle before being destroyed.
-	std::this_thread::sleep_for(std::chrono::seconds(1));
-	for (std::map<uint64_t, TrackConverter*>::iterator it = m_converters.begin(); it != m_converters.end(); ++it)
+	if (m_thread_mux.joinable())
 	{
-		delete it->second;
+		m_thread_mux.join();
 	}
-	m_converters.clear();
-
-	m_muxer.mux();
 }
 
 void MKVStreamer::readBlock(
@@ -697,10 +689,11 @@ void MKVStreamer::readTracks(libmatroska::KaxTracks& tracksElement, libebml::Ebm
 		if (info.codecId == "S_HDMV/PGS")
 		{
 			m_converters[info.trackNumber] = new PGSConverter(m_input_file_name, info);
+			// std::cout << "converter for track " << info.trackNumber << std::endl;
 		}
 		else if (info.codecId == "V_MPEG4/ISO/AVC")
 		{
-			// m_converters[info.trackNumber] = new H264Converter(m_input_file_name, info);
+			m_converters[info.trackNumber] = new H264Converter(m_input_file_name, info);
 		}
 		else
 		{
@@ -709,16 +702,9 @@ void MKVStreamer::readTracks(libmatroska::KaxTracks& tracksElement, libebml::Ebm
 		}
 	}
 
-	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.track1.und.264", 0, "h264", "eng", "H.264 Video");
-	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.mkv", 1, "matroska", "eng", "English DTS Surround 7.1");
-	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.track9.eng.sup",  0, "sup", "eng", "English PGS");
-	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.track11.eng.sup", 0, "sup", "eng", "English PGS (for hearing impaired)");
-	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.track13.deu.sup", 0, "sup", "deu", "Deutsch PGS");
-	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.track21.fra.sup", 0, "sup", "fra", "Français PGS");
-	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.mkv.9.eng.srt",   0, "srt", "eng", "English");
-	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.mkv.11.eng.srt",  0, "srt", "eng", "English (for hearing impaired)");
-	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.mkv.13.deu.srt",  0, "srt", "deu", "Deutsch");
-	// m_muxer.add_file("/pool-03/Video/Movies/1080p/Tron Legacy/Tron Legacy (3D) - errors.mkv.21.fra.srt",  0, "srt", "fra", "Français");
+	// all tracks/converters have been defined.
+	// muxer may now wait for packets/frames.
+	m_thread_mux = std::thread(&TrackMuxer::mux, &m_muxer);
 }
 
 void MKVStreamer::streamSegment(libebml::EbmlStream& stream, const size_t fileSize)
@@ -862,4 +848,6 @@ void MKVStreamer::run(void)
 		delete it->second;
 		it->second = nullptr;
 	}
+
+	m_converters.clear();
 }

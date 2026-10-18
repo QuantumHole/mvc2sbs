@@ -19,7 +19,7 @@ H264Converter::H264Converter(
 	TrackConverter(input_file_name, info),
 	m_nal_length_size(0),
 	m_codec_private_written(false),
-	m_mvc2sbs(output_stream())
+	m_mvc2sbs(output_stream(), mux_id())
 {
 	if (info.codecPrivate.size() < 5)
 	{

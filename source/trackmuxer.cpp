@@ -445,42 +445,60 @@ void TrackMuxer::push(
 	track.condition.notify_one();
 }
 
-bool TrackMuxer::get_live_packet(TrackFile& track, AVPacket* packet)
+TrackMuxer::LivePacketResult TrackMuxer::get_live_packet(TrackFile& track, AVPacket* packet)
 {
-	std::unique_lock<std::mutex> lock(track.mutex);
+    std::unique_lock<std::mutex> lock(track.mutex);
 
-	track.condition.wait(lock, [&track]()
-	{
-		return !track.queue.empty() || track.finished;
-	});
+    if (track.queue.empty())
+    {
+        return track.finished ? LivePacketResult::EndOfStream : LivePacketResult::NoPacket;
+    }
 
-	if (track.queue.empty())
+    LivePacket live_packet = std::move(track.queue.front());
+    track.queue.pop_front();
+    lock.unlock();
+
+    av_packet_unref(packet);
+
+    if (live_packet.data.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+    {
+        throw std::runtime_error("Live packet is too large");
+    }
+
+    check_ffmpeg(
+        av_new_packet(packet, static_cast<int>(live_packet.data.size())),
+        "av_new_packet");
+
+    std::copy(live_packet.data.begin(), live_packet.data.end(), packet->data);
+
+    packet->pts = live_packet.pts;
+    packet->dts = live_packet.dts;
+    packet->duration = live_packet.duration;
+    packet->flags = live_packet.flags;
+
+    return LivePacketResult::PacketReady;
+}
+
+void TrackMuxer::prepare_stream(void)
+{
+	/* Allocate packet buffers for all tracks. */
+	for (TrackFile& track : m_tracks)
 	{
-		return false;
+		track.packet = av_packet_alloc();
+
+		if (track.packet == nullptr)
+		{
+			throw std::runtime_error("av_packet_alloc failed");
+		}
 	}
 
-	LivePacket live_packet = std::move(track.queue.front());
-	track.queue.pop_front();
-	lock.unlock();
-	av_packet_unref(packet);
-
-	if (live_packet.data.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
-	{
-		throw std::runtime_error("Live packet is too large");
-	}
-
+	/*
+		* Write Matroska header.
+		* All tracks must already have been added at this point.
+		*/
 	check_ffmpeg(
-		av_new_packet(packet, static_cast<int>(live_packet.data.size())),
-		"av_new_packet");
-
-	std::copy(live_packet.data.begin(), live_packet.data.end(), packet->data);
-
-	packet->pts = live_packet.pts;
-	packet->dts = live_packet.dts;
-	packet->duration = live_packet.duration;
-	packet->flags = live_packet.flags;
-
-	return true;
+		avformat_write_header(m_output_context, nullptr),
+		"avformat_write_header");
 }
 
 void TrackMuxer::mux(void)
@@ -499,152 +517,84 @@ void TrackMuxer::mux(void)
 
 	try
 	{
-		/* Allocate packet buffers for all tracks. */
-		for (TrackFile& track : m_tracks)
+		prepare_stream();
+
+		size_t num_eof = 0;
+		for (std::vector<TrackFile>::iterator track = m_tracks.begin(); true; ++track)
 		{
-			track.packet = av_packet_alloc();
-
-			if (track.packet == nullptr)
+			if (track == m_tracks.end())
 			{
-				throw std::runtime_error("av_packet_alloc failed");
+				if (num_eof == m_tracks.size())
+				{
+					break;
+				}
+				track = m_tracks.begin();
+				num_eof = 0;
 			}
-		}
 
-		/*
-		 * Write Matroska header.
-		 *
-		 * All tracks must already have been added at this point.
-		 */
-		check_ffmpeg(
-			avformat_write_header(m_output_context, nullptr),
-			"avformat_write_header");
-
-		while (true)
-		{
-			/* Fill one packet for every track. */
-			for (TrackFile& track : m_tracks)
+			if (track->eof)
 			{
-				if (track.eof)
+				num_eof++;
+				continue;
+			}
+
+			if (track->live)
+			{
+				const LivePacketResult result = get_live_packet(*track, track->packet);
+
+				if (result == LivePacketResult::EndOfStream)
 				{
+					track->eof = true;
 					continue;
 				}
 
-				if (track.packet->data != nullptr)
+				if (result == LivePacketResult::NoPacket)
 				{
+					// Diesen Track überspringen und andere Tracks prüfen.
 					continue;
 				}
-
-				if (track.live)
+			}
+			else
+			{
+				while (true)
 				{
-					const bool got_packet = get_live_packet(track, track.packet);
+					const int result = av_read_frame(track->format, track->packet);
 
-					if (!got_packet)
+					if (result == AVERROR_EOF)
 					{
-						track.eof = true;
+						track->eof = true;
+						break;
 					}
-				}
-				else
-				{
-					while (true)
+
+					check_ffmpeg(result, "av_read_frame");
+
+					if (track->packet->stream_index == track->input_stream->index)
 					{
-						const int result = av_read_frame(track.format, track.packet);
-
-						if (result == AVERROR_EOF)
-						{
-							track.eof = true;
-							break;
-						}
-
-						check_ffmpeg(result, "av_read_frame");
-
-						if (track.packet->stream_index == track.input_stream->index)
-						{
-							break;
-						}
-
-						av_packet_unref(track.packet);
+						break;
 					}
+
+					av_packet_unref(track->packet);
 				}
+				/*
+				* Convert timestamps for file tracks.
+				*
+				* Live packets already use the output stream's
+				* time base.
+				*/
+				av_packet_rescale_ts(track->packet, track->input_stream->time_base, track->output_stream->time_base);
 			}
 
-			/*
-			 * Select packet with earliest timestamp.
-			 */
-			int selected = -1;
 
-			for (size_t i = 0; i < m_tracks.size(); i++)
-			{
-				const TrackFile& track = m_tracks[i];
-
-				if (track.eof || (track.packet->data == nullptr))
-				{
-					continue;
-				}
-
-				if (selected < 0)
-				{
-					selected = static_cast<int>(i);
-					continue;
-				}
-
-				const TrackFile& current = m_tracks[static_cast<size_t>(selected)];
-				const AVPacket* candidate = track.packet;
-				const AVPacket* current_packet = current.packet;
-				const int64_t candidate_ts = ((candidate->dts != AV_NOPTS_VALUE) ? candidate->dts : candidate->pts);
-				const int64_t current_ts = ((current_packet->dts != AV_NOPTS_VALUE) ? current_packet->dts : current_packet->pts);
-
-				if (candidate_ts == AV_NOPTS_VALUE)
-				{
-					continue;
-				}
-
-				if (current_ts == AV_NOPTS_VALUE)
-				{
-					selected = static_cast<int>(i);
-					continue;
-				}
-
-				const AVRational candidate_tb = track.live ? track.output_stream->time_base : track.input_stream->time_base;
-				const AVRational current_tb = current.live ? current.output_stream->time_base : current.input_stream->time_base;
-
-				if (av_compare_ts(candidate_ts, candidate_tb, current_ts, current_tb) < 0)
-				{
-					selected = static_cast<int>(i);
-				}
-			}
-
-			/*
-			 * No packets left.
-			 */
-			if (selected < 0)
-			{
-				break;
-			}
-
-			TrackFile& track = m_tracks[static_cast<size_t>(selected)];
-			AVPacket* packet = track.packet;
-
-			/*
-			 * Convert timestamps for file tracks.
-			 *
-			 * Live packets already use the output stream's
-			 * time base.
-			 */
-			if (!track.live)
-			{
-				av_packet_rescale_ts(packet, track.input_stream->time_base, track.output_stream->time_base);
-			}
-
-			packet->stream_index = track.output_stream->index;
+			track->packet->stream_index = track->output_stream->index;
 
 			check_ffmpeg(
-				av_interleaved_write_frame(m_output_context, packet),
+				av_interleaved_write_frame(m_output_context, track->packet),
 				"av_interleaved_write_frame");
 
 			/*
 			 * av_interleaved_write_frame() consumes the packet.
 			 */
-			av_packet_unref(packet);
+			av_packet_unref(track->packet);
 		}
 
 		check_ffmpeg(av_write_trailer(m_output_context), "av_write_trailer");

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "mvc2sbsconverter.h"
+#include "trackmuxer.h"
 
 extern "C" {
 #include <libavutil/opt.h>
@@ -12,12 +13,13 @@ extern "C" {
 
 static const size_t MAX_NAL_SIZE = static_cast<size_t>(64) * 1024 * 1024;
 
-MVC2SBSConverter::MVC2SBSConverter(std::ostream& output) :
+MVC2SBSConverter::MVC2SBSConverter(std::ostream& output, const size_t muxer_id) :
 	m_decoder(nullptr),
 	m_output(output),
 	m_input(),
 	m_finished(false),
-	m_frame_index(0)
+	m_frame_index(0),
+	m_muxer_track_id(muxer_id)
 {
 	Edge264MvcSettings settings;
 
@@ -230,6 +232,7 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264MvcFrame& edge264frame)
 		throw std::runtime_error("avcodec_send_frame failed");
 	}
 
+	TrackMuxer& muxer = TrackMuxer::instance();
 	while (true)
 	{
 		int ret = avcodec_receive_packet(m_context_av, m_packet_av);
@@ -246,6 +249,15 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264MvcFrame& edge264frame)
 		}
 
 		m_output.write(reinterpret_cast<const char*>(m_packet_av->data), m_packet_av->size);
+
+		std::vector<uint8_t> vecdata(m_packet_av->data, m_packet_av->data + m_packet_av->size);
+		muxer.push(
+			m_muxer_track_id,
+			vecdata,
+			m_packet_av->pts,
+			m_packet_av->dts,
+			m_packet_av->duration,
+			m_packet_av->flags);
 
 		av_packet_unref(m_packet_av);
 	}
@@ -517,6 +529,7 @@ bool MVC2SBSConverter::finish(void)
 		throw std::runtime_error("Encoder flush failed");
 	}
 
+	TrackMuxer& muxer = TrackMuxer::instance();
 	while (true)
 	{
 		int ret = avcodec_receive_packet(m_context_av, m_packet_av);
@@ -533,6 +546,15 @@ bool MVC2SBSConverter::finish(void)
 		}
 
 		m_output.write(reinterpret_cast<const char*>(m_packet_av->data), m_packet_av->size);
+
+		std::vector<uint8_t> vecdata(m_packet_av->data, m_packet_av->data + m_packet_av->size);
+		muxer.push(
+			m_muxer_track_id,
+			vecdata,
+			m_packet_av->pts,
+			m_packet_av->dts,
+			m_packet_av->duration,
+			m_packet_av->flags);
 
 		av_packet_unref(m_packet_av);
 	}

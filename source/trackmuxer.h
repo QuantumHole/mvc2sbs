@@ -35,6 +35,13 @@ class TrackMuxer
 			int flags = 0;                   ///< additional for the packet flags.
 		};
 
+		typedef enum
+		{
+			PacketReady,
+			NoPacket,
+			EndOfStream
+		} LivePacketResult;
+
 		/** information about one input track (file or stream). */
 		struct TrackFile
 		{
@@ -94,12 +101,15 @@ class TrackMuxer
 		/** Get the next packet from a track.
 		 * @param track track information.
 		 * @param packet buffer for next packet.
-		 * @return true if packet is available, false if the track is finished and has no packets left.
+		 * @return status of packet acquisition.
 		 */
-		bool get_live_packet(TrackFile& track, AVPacket* packet);
+		LivePacketResult get_live_packet(TrackFile& track, AVPacket* packet);
 
 		/** Wait until every non-finished live track has at least one packet available. */
 		void wait_for_live_packets(void);
+
+		/** allocate packets for all tracks and write output file header. */
+		void prepare_stream(void);
 
 		/** release temporary memory. */
 		void cleanup(void);

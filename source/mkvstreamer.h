@@ -25,7 +25,8 @@ class MKVStreamer
 		size_t m_input_file_size;                                   ///< input file size.
 		std::map<uint64_t, TrackConverter*> m_converters;           ///< map of configured converters for recognized tracks.
 		std::chrono::steady_clock::time_point m_last_status_time;   ///< timing information for status output.
-		TrackMuxer& m_muxer;                                          ///< muxer for converted tracks
+		TrackMuxer& m_muxer;                                        ///< muxer for converted tracks.
+		std::thread m_thread_mux;                                   ///< muxer thread.
 
 		/** process block of MKV data.
 		 * @param block current matroska block.
@@ -82,9 +83,6 @@ class MKVStreamer
 
 		/** main function for conversion. */
 		void run(void);
-
-		/** finish all operations including joining all threads. */
-		void finish(void);
 };
 
 #endif

@@ -176,6 +176,12 @@ PGSConverter::PGSConverter(const std::string& input_file_name, const TrackInfo& 
 	m_line_index(0),
 	m_mux_id_srt(0)
 {
+	TrackInfo srtinfo = info;
+	srtinfo.codecId = "S_TEXT/UTF8";
+	srtinfo.title += " SRT";
+
+	TrackMuxer& muxer = TrackMuxer::instance();
+	m_mux_id_srt = muxer.add_live_track(srtinfo);
 }
 
 PGSConverter::~PGSConverter(void)
@@ -208,14 +214,7 @@ void PGSConverter::append_ocr(const PGSStream::PGSFrame& frame)
 
 	std::vector<uint8_t> data(text.begin(), text.end());
 	TrackMuxer& muxer = TrackMuxer::instance();
-	if (m_mux_id_srt == 0)
-	{
-		TrackInfo info = track_info();
-		info.codecId = "S_TEXT/UTF8";
-		info.title += " SRT";
 
-		m_mux_id_srt = muxer.add_live_track(info);
-	}
 	muxer.push(
 		m_mux_id_srt,
 		data,
@@ -298,9 +297,10 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 		const std::vector<PGSStream::PGSSegment> segments = m_pgs_stream.saveFrame(frame, true);
 		for (const PGSStream::PGSSegment& seg: segments)
 		{
-			/* write full PGS stream into output file. */
-			std::vector<uint8_t> segdata = m_pgs_stream.serializeSegment(seg, true);
-			write(segdata.data(), segdata.size());
+			std::vector<uint8_t> segdata;
+			// /* write full PGS stream into output file. */
+			// segdata = m_pgs_stream.serializeSegment(seg, true);
+			// write(segdata.data(), segdata.size());
 
 			/* write segments without headers into muxer */
 			segdata = m_pgs_stream.serializeSegment(seg, false);
