@@ -1,6 +1,7 @@
 #include "trackmuxer.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <iostream>
 #include <stdexcept>
@@ -140,31 +141,24 @@ static int fillCodecParameters(const TrackConverter::TrackInfo& track, AVCodecPa
 		par->width  = static_cast<int>(track.width);
 		par->height = static_cast<int>(track.height);
 	}
-	// else if (par->codec_type == AVMEDIA_TYPE_AUDIO)
-	// {
-	// if (track.sampleRate <= 0 || track.channels <= 0)
-	// return AVERROR(EINVAL);
+	else if (par->codec_type == AVMEDIA_TYPE_AUDIO)
+	{
+		if (!std::isfinite(track.sampleRate) ||
+		    track.sampleRate < 1.0 ||
+		    track.sampleRate > static_cast<double>(INT_MAX) ||
+		    track.channels == 0 ||
+		    track.channels > static_cast<uint64_t>(INT_MAX))
+		{
+			return AVERROR(EINVAL);
+		}
 
-	// par->sample_rate = track.sampleRate;
-	// av_channel_layout_default(&par->ch_layout, track.channels);
-
-	//// Matroska CodecDelay ist eine Zeit; initial_padding ist in Samples.
-	// if (track.codecDelay > 0) {
-	// if (track.codecDelay > static_cast<uint64_t>(INT64_MAX))
-	// return AVERROR(EINVAL);
-
-	// const int64_t samples = av_rescale_rnd(
-	// static_cast<int64_t>(track.codecDelay),
-	// track.sampleRate,
-	// 1'000'000'000LL,
-	// AV_ROUND_NEAR_INF);
-
-	// if (samples < 0 || samples > INT_MAX)
-	// return AVERROR(EINVAL);
-
-	// par->initial_padding = static_cast<int>(samples);
-	// }
-	// }
+		par->sample_rate = static_cast<int>(std::lround(track.sampleRate));
+		av_channel_layout_default(&par->ch_layout, static_cast<int>(track.channels));
+		if (par->sample_rate <= 0 || par->ch_layout.nb_channels != static_cast<int>(track.channels))
+		{
+			return AVERROR(EINVAL);
+		}
+	}
 
 	if (!track.codecPrivate.empty())
 	{

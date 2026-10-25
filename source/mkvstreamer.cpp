@@ -12,8 +12,10 @@
 
 #include <matroska/KaxContexts.h>
 #include <matroska/KaxCluster.h>
+#include <matroska/KaxSemantic.h>
 #include <matroska/KaxSegment.h>
 
+#include <cmath>
 #include <iostream>
 
 // libebml      1.4.7
@@ -174,6 +176,41 @@ static uint64_t GetVideoHeight( const libmatroska::KaxTrackEntry* track)
 	    : 0;
 }
 
+static double GetAudioSampleRate(const libmatroska::KaxTrackEntry* track)
+{
+	if (!track)
+	{
+		return 8000.0;
+	}
+
+	const libmatroska::KaxTrackAudio* audio = FindElement<libmatroska::KaxTrackAudio>(*track);
+	if (!audio)
+	{
+		return 8000.0;
+	}
+
+	const libmatroska::KaxAudioSamplingFreq* sampleRate =
+		FindElement<libmatroska::KaxAudioSamplingFreq>(*audio);
+	return sampleRate ? sampleRate->GetValue() : 8000.0;
+}
+
+static uint64_t GetAudioChannels(const libmatroska::KaxTrackEntry* track)
+{
+	if (!track)
+	{
+		return 1;
+	}
+
+	const libmatroska::KaxTrackAudio* audio = FindElement<libmatroska::KaxTrackAudio>(*track);
+	if (!audio)
+	{
+		return 1;
+	}
+
+	const libmatroska::KaxAudioChannels* channels = FindElement<libmatroska::KaxAudioChannels>(*audio);
+	return channels ? channels->GetValue() : 1;
+}
+
 static uint64_t GetCodecDelay(const libmatroska::KaxTrackEntry* track)
 {
 	if (!track)
@@ -286,6 +323,8 @@ static TrackConverter::TrackInfo GetH264TrackInfo(const libmatroska::KaxTrackEnt
 	result.codecPrivate = GetCodecPrivate(track);
 	result.width = GetVideoWidth(track);
 	result.height = GetVideoHeight(track);
+	result.sampleRate = GetAudioSampleRate(track);
+	result.channels = GetAudioChannels(track);
 	result.codecDelay = GetCodecDelay(track);
 	result.defaultDuration = GetDefaultDuration(track);
 	result.timestampScale = GetGlobalTimecodeScale(track);
@@ -704,7 +743,6 @@ void MKVStreamer::readTracks(libmatroska::KaxTracks& tracksElement, libebml::Ebm
 		if (info.codecId == "S_HDMV/PGS")
 		{
 			m_converters[info.trackNumber] = new PGSConverter(m_input_file_name, info);
-			// std::cout << "converter for track " << info.trackNumber << std::endl;
 		}
 		else if (info.codecId == "V_MPEG4/ISO/AVC")
 		{

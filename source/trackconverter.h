@@ -31,6 +31,8 @@ class TrackConverter
 			std::vector<uint8_t> codecPrivate = {};
 			uint64_t width = 0;
 			uint64_t height = 0;
+			double sampleRate = 0.0;
+			uint64_t channels = 0;
 			uint64_t codecDelay = 0;                   // nanoseconds
 			uint64_t defaultDuration = 0;              // nanoseconds
 			uint64_t timestampScale = 1'000'000;
