@@ -320,7 +320,7 @@ bool H264Converter::write_mvc_codec_private(
 	return true;
 }
 
-size_t H264Converter::process_data(const std::vector<uint8_t>& data, const FrameInfo&)
+size_t H264Converter::process_data(const std::vector<uint8_t>& data, const FrameInfo& info)
 {
 	if (m_nal_length_size == 0)
 	{
@@ -328,9 +328,17 @@ size_t H264Converter::process_data(const std::vector<uint8_t>& data, const Frame
 		return 0;
 	}
 
-	std::vector<uint8_t> output_data;
+	const auto drop_frame = [&data, &info](const char* reason) {
+		std::cerr << "H264: skipping damaged frame " << info.index
+		          << " at " << (static_cast<double>(info.pts) / 1e9)
+		          << "s: " << reason << '\n';
+		return data.size();
+	};
 
-	if (!m_codec_private_written)
+	std::vector<uint8_t> output_data;
+	const bool writing_codec_private = !m_codec_private_written;
+
+	if (writing_codec_private)
 	{
 		// Normale AVC SPS/PPS.
 		if (!write_codec_private(track_info().codecPrivate, output_data))
@@ -345,8 +353,6 @@ size_t H264Converter::process_data(const std::vector<uint8_t>& data, const Frame
 			std::cerr << "H264: invalid MVC codec private data\n";
 			return 0;
 		}
-
-		m_codec_private_written = true;
 	}
 
 	std::size_t offset = 0;
@@ -355,8 +361,7 @@ size_t H264Converter::process_data(const std::vector<uint8_t>& data, const Frame
 	{
 		if (data.size() - offset < m_nal_length_size)
 		{
-			std::cerr << "H264: truncated NAL length\n";
-			return 0;
+			return drop_frame("truncated NAL length field");
 		}
 
 		uint32_t nalSize = 0;
@@ -373,8 +378,7 @@ size_t H264Converter::process_data(const std::vector<uint8_t>& data, const Frame
 		    (static_cast<std::size_t>(nalSize) >
 		     data.size() - offset))
 		{
-			std::cerr << "H264: invalid NAL size\n";
-			return 0;
+			return drop_frame("invalid NAL size");
 		}
 
 		/*
@@ -410,6 +414,11 @@ size_t H264Converter::process_data(const std::vector<uint8_t>& data, const Frame
 		{
 			return 0;
 		}
+	}
+
+	if (writing_codec_private)
+	{
+		m_codec_private_written = true;
 	}
 
 	return data.size();

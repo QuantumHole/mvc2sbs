@@ -412,18 +412,32 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264MvcFrame& edge264frame)
 bool MVC2SBSConverter::drainFrames(void)
 {
 	Edge264MvcFrame frame;
-	bool decoding_ok = true;
-
-	while (decoding_ok && edge264mvc_receive_frame(m_decoder, &frame) == EDGE264MVC_OK)
+	while (true)
 	{
+		const int result = edge264mvc_receive_frame(m_decoder, &frame);
+
+		if (result == EDGE264MVC_AGAIN || result == EDGE264MVC_END)
+		{
+			return true;
+		}
+
+		if (result != EDGE264MVC_OK)
+		{
+			return false;
+		}
+
+		bool decoding_ok = true;
 		if (!writeFrameH264(frame))
 		{
 			decoding_ok = false;
 		}
 		edge264mvc_release_frame(m_decoder, &frame);
-	}
 
-	return decoding_ok;
+		if (!decoding_ok)
+		{
+			return false;
+		}
+	}
 }
 
 bool MVC2SBSConverter::decodeNAL(const size_t begin, const size_t end)
@@ -446,12 +460,12 @@ bool MVC2SBSConverter::decodeNAL(const size_t begin, const size_t end)
 			return false;
 		}
 
-		if (res == 0)
+		if (res == EDGE264MVC_OK)
 		{
 			return true;
 		}
 
-		if (res == ENOBUFS)
+		if (res == EDGE264MVC_AGAIN)
 		{
 			// The decoder wants us to drain frames and retry.
 			//
@@ -465,13 +479,13 @@ bool MVC2SBSConverter::decodeNAL(const size_t begin, const size_t end)
 			continue;
 		}
 
-		if (res == ENOTSUP)
+		if (res == EDGE264MVC_UNSUPPORTED)
 		{
 			// Unsupported NAL: ignore NAL and continue decoding.
 			return true;
 		}
 
-		if (res == EBADMSG)
+		if (res == EDGE264MVC_CORRUPT)
 		{
 			// A corrupt NAL. Continue with the next NAL.
 			return true;
