@@ -47,9 +47,9 @@ class PGSStream {
 		/** PGS segment buffer. */
 		struct PGSSegment
 		{
-			uint32_t pts;
-			uint32_t dts;
-			std::vector<uint8_t> payload;
+			uint32_t pts = 0;
+			uint32_t dts = 0;
+			std::vector<uint8_t> payload = {};
 		};
 
 		/** adds an arbitrary amount of data to the stream.

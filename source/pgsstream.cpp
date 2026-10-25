@@ -718,7 +718,7 @@ PGSStream::PGSSegment PGSStream::writePCS(
 {
 	std::vector<uint8_t> payload;
 
-	putBE16(payload, frame.screen.x * std::max<uint8_t>(1, frame_copies));
+	putBE16(payload, static_cast<uint16_t>(frame.screen.x * std::max<uint8_t>(1, frame_copies)));
 	putBE16(payload, frame.screen.y);
 
 	// Frame rate. 0x10 = 24 fps / üblicher Defaultwert.
@@ -745,7 +745,7 @@ PGSStream::PGSSegment PGSStream::writePCS(
 		payload.push_back(0x00);
 
 		// Cropping-Werte werden nur bei gesetztem Cropping Flag benötigt.
-		putBE16(payload, frame.position.x + i * frame.screen.x);
+		putBE16(payload, static_cast<uint16_t>(frame.position.x + i * frame.screen.x));
 		putBE16(payload, frame.position.y);
 	}
 
