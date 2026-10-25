@@ -95,7 +95,7 @@ class TrackConverter
 		/** retrieve the track information.
 		 * @return reference to the track information.
 		 */
-		const TrackInfo& track_info(void) const;
+		const TrackInfo& track_info(void) const [[clang::lifetimebound]];
 
 		/** add a bunch of data bytes.
 		 * @param data put data bytes into input queue.

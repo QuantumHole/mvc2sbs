@@ -13,12 +13,18 @@ extern "C" {
 
 static const size_t MAX_NAL_SIZE = static_cast<size_t>(64) * 1024 * 1024;
 
-MVC2SBSConverter::MVC2SBSConverter(const size_t muxer_id) :
+MVC2SBSConverter::MVC2SBSConverter(
+	const size_t muxer_id,
+	const std::function<void(const AVCodecParameters&, AVRational)>& configure_output,
+	const std::function<void()>& fail_output) :
 	m_decoder(nullptr),
 	m_input(),
 	m_finished(false),
 	m_frame_index(0),
-	m_muxer_track_id(muxer_id)
+	m_muxer_track_id(muxer_id),
+	m_configure_output(configure_output),
+	m_fail_output(fail_output),
+	m_output_configured(false)
 {
 	Edge264MvcSettings settings;
 
@@ -26,7 +32,8 @@ MVC2SBSConverter::MVC2SBSConverter(const size_t muxer_id) :
 
 	if (edge264mvc_open(&m_decoder, &settings) != EDGE264MVC_OK)
 	{
-		throw std::runtime_error("edge264mvc_open() failed");
+		m_finished = true;
+		m_fail_output();
 	}
 }
 
@@ -137,6 +144,7 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264MvcFrame& edge264frame)
 		m_context_av->pix_fmt = AV_PIX_FMT_YUV420P;
 		m_context_av->time_base = AVRational{fden, fnum};
 		m_context_av->framerate = AVRational{fnum, fden};
+		m_context_av->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
 		// Typische H.264-Einstellungen
 		if ((av_opt_set(m_context_av->priv_data, "preset", "medium", AV_OPT_SEARCH_CHILDREN) < 0) ||
@@ -153,6 +161,29 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264MvcFrame& edge264frame)
 		{
 			throw std::runtime_error("avcodec_open2 failed");
 		}
+
+		AVCodecParameters* parameters = avcodec_parameters_alloc();
+		if (parameters == nullptr)
+		{
+			throw std::runtime_error("avcodec_parameters_alloc failed");
+		}
+
+		const int parametersResult = avcodec_parameters_from_context(parameters, m_context_av);
+		if (parametersResult < 0)
+		{
+			avcodec_parameters_free(&parameters);
+			throw std::runtime_error("avcodec_parameters_from_context failed");
+		}
+
+		if ((parameters->extradata == nullptr) || (parameters->extradata_size <= 0))
+		{
+			avcodec_parameters_free(&parameters);
+			throw std::runtime_error("libx264 did not provide H.264 extradata");
+		}
+
+		m_configure_output(*parameters, m_context_av->time_base);
+		avcodec_parameters_free(&parameters);
+		m_output_configured = true;
 
 		m_frame_av = av_frame_alloc();
 
@@ -355,9 +386,6 @@ bool MVC2SBSConverter::writeFrameH264(const Edge264MvcFrame& edge264frame)
     // libavformat (MKV) erwartet AVCC.
     
     // Kopie des Packets, weil av_packet_unref es löscht
-    AVPacket* pkt = av_packet_alloc();
-    av_packet_ref(pkt, m_packet_av);
-    
     // Muxer pushen (annimmt, dass der Muxer die extradata vom Stream-Context holt)
     // Dein Muxer muss sicherstellen, dass die extradata in die MKV-Header geschrieben werden.
     
@@ -637,7 +665,15 @@ bool MVC2SBSConverter::finish(void)
 		return false;
 	}
 
-	edge264mvc_send_end(m_decoder);
+	if (edge264mvc_send_end(m_decoder) != EDGE264MVC_OK)
+	{
+		return false;
+	}
+
+	if (!drainFrames() || (m_context_av == nullptr) || !m_output_configured)
+	{
+		return false;
+	}
 
 	// Encoder flushen
 	if (avcodec_send_frame(m_context_av, nullptr) < 0)

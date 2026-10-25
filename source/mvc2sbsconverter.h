@@ -12,6 +12,7 @@
 #include <ostream>
 #include <stdexcept>
 #include <vector>
+#include <functional>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -27,7 +28,10 @@ class MVC2SBSConverter
 		/** constructor.
 		 * @param muxer_id ID number of the muxed output stream.
 		 */
-		explicit MVC2SBSConverter(const size_t muxer_id);
+		explicit MVC2SBSConverter(
+			const size_t muxer_id,
+			const std::function<void(const AVCodecParameters&, AVRational)>& configure_output,
+			const std::function<void()>& fail_output);
 
 		/** destructor. */
 		~MVC2SBSConverter(void);
@@ -100,6 +104,9 @@ class MVC2SBSConverter
 		AVPacket* m_packet_av = nullptr;         ///< AVPacket buffer.
 		size_t m_frame_index;                    ///< frame counter for timing information.
 		const size_t m_muxer_track_id;           ///< muxer track ID.
+		std::function<void(const AVCodecParameters&, AVRational)> m_configure_output;
+		std::function<void()> m_fail_output;
+		bool m_output_configured;
 };
 
 #endif

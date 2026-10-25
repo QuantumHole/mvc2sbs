@@ -45,23 +45,29 @@ static uint32_t readBE32(const std::vector<uint8_t>& data, const size_t offset)
 
 static void putBE16(std::vector<uint8_t>& out, uint16_t v)
 {
-	out.push_back(static_cast<uint8_t>((v >> 8) & 0xff));
-	out.push_back(static_cast<uint8_t>(v & 0xff));
+    out.insert(out.end(), {
+        static_cast<uint8_t>((v >> 8) & 0xff),
+        static_cast<uint8_t>(v & 0xff)
+    });
 }
 
 static void putBE24(std::vector<uint8_t>& out, uint32_t v)
 {
-	out.push_back(static_cast<uint8_t>((v >> 16) & 0xff));
-	out.push_back(static_cast<uint8_t>((v >> 8) & 0xff));
-	out.push_back(static_cast<uint8_t>(v & 0xff));
+	out.insert(out.end(), {
+		static_cast<uint8_t>((v >> 16) & 0xff),
+		static_cast<uint8_t>((v >> 8) & 0xff),
+		static_cast<uint8_t>(v & 0xff)
+	});
 }
 
 static void putBE32(std::vector<uint8_t>& out, uint32_t v)
 {
-	out.push_back(static_cast<uint8_t>((v >> 24) & 0xff));
-	out.push_back(static_cast<uint8_t>((v >> 16) & 0xff));
-	out.push_back(static_cast<uint8_t>((v >> 8) & 0xff));
-	out.push_back(static_cast<uint8_t>(v & 0xff));
+	out.insert(out.end(), {
+		static_cast<uint8_t>((v >> 24) & 0xff),
+		static_cast<uint8_t>((v >> 16) & 0xff),
+		static_cast<uint8_t>((v >> 8) & 0xff),
+		static_cast<uint8_t>(v & 0xff)
+	});
 }
 
 static void require(const bool condition, const std::string& message)

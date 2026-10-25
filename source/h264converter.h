@@ -27,6 +27,9 @@ class H264Converter : public TrackConverter
 		 */
 		virtual size_t process_data(const std::vector<uint8_t>& data, const FrameInfo& info) override;
 
+	protected:
+		virtual void finish_processing(void) override;
+
 	private:
 		size_t m_nal_length_size;      ///< size of NAL length, may be 1, 2, or 4.
 		bool m_codec_private_written;  ///< flag indicating that codec private data has been written at least once.

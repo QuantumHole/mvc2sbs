@@ -104,6 +104,7 @@ else ifeq ($(COMPILER), gnu)
 		-Wtrivial-auto-var-init \
 		-Wunused-macros \
 		-Wvector-operation-performance \
+		-Wno-error=attributes \
 		# -Winline \
 		# -Wsuggest-attribute=returns_nonnull \
 		# -Wabi \                 # only sensible as e.g. -Wabi=11

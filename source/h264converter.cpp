@@ -14,10 +14,17 @@
 #include <algorithm>
 
 H264Converter::H264Converter(const TrackInfo& info) :
-	TrackConverter(info),
+	TrackConverter(info, true),
 	m_nal_length_size(0),
 	m_codec_private_written(false),
-	m_mvc2sbs(mux_id())
+	m_mvc2sbs(
+		mux_id(),
+		[this](const AVCodecParameters& parameters, const AVRational time_base) {
+			configure_output_track(parameters, time_base);
+		},
+		[this]() {
+			fail_output_track();
+		})
 {
 	if (info.codecPrivate.size() < 5)
 	{
@@ -36,9 +43,13 @@ H264Converter::H264Converter(const TrackInfo& info) :
 
 H264Converter::~H264Converter(void)
 {
+}
+
+void H264Converter::finish_processing(void)
+{
 	if (!m_mvc2sbs.finish())
 	{
-		// Fehler beim letzten NAL, Flush oder Schreiben
+		fail_output_track();
 	}
 }
 
@@ -75,6 +86,9 @@ bool H264Converter::write_codec_private(const std::vector<uint8_t>& codecPrivate
 		return false;
 	}
 
+	// lokal buffer to avoid lifetime safety error from clang
+	// content must only be appended once to data.
+	std::vector<uint8_t> converted;
 	size_t pos = 5;
 
 	/* number SPS. */
@@ -98,8 +112,8 @@ bool H264Converter::write_codec_private(const std::vector<uint8_t>& codecPrivate
 			return false;
 		}
 
-		write_start_code(data);
-		data.insert(data.end(), &codecPrivate[pos], &codecPrivate[pos + size]);
+		write_start_code(converted);
+		converted.insert(converted.end(), &codecPrivate[pos], &codecPrivate[pos + size]);
 		pos += size;
 	}
 
@@ -129,12 +143,13 @@ bool H264Converter::write_codec_private(const std::vector<uint8_t>& codecPrivate
 			return false;
 		}
 
-		write_start_code(data);
-		data.insert(data.end(), &codecPrivate[pos], &codecPrivate[pos + size]);
+		write_start_code(converted);
+		converted.insert(converted.end(), &codecPrivate[pos], &codecPrivate[pos + size]);
 
 		pos += size;
 	}
 
+	data.insert(data.end(), converted.begin(), converted.end());
 	return true;
 }
 
@@ -225,8 +240,12 @@ bool H264Converter::write_mvc_codec_private(
 		return false;
 	}
 
+	// lokal buffer to avoid lifetime safety error from clang
+	// content must only be appended once to data.
+	std::vector<uint8_t> converted;
+
 	/*
-	 * Das nächste Byte:
+	 * next Byte:
 	 *
 	 * bit 7: reserved
 	 * bit 6..0: number of SPS
@@ -251,10 +270,9 @@ bool H264Converter::write_mvc_codec_private(
 			return false;
 		}
 
-		write_start_code(output);
-
-		output.insert(
-			output.end(),
+		write_start_code(converted);
+		converted.insert(
+			converted.end(),
 			codecPrivate.begin() + static_cast<std::ptrdiff_t>(pos),
 			codecPrivate.begin() +
 			static_cast<std::ptrdiff_t>(pos + nalSize));
@@ -287,22 +305,29 @@ bool H264Converter::write_mvc_codec_private(
 			return false;
 		}
 
-		write_start_code(output);
+		write_start_code(converted);
 
-		output.insert(
-			output.end(),
+		converted.insert(
+			converted.end(),
 			codecPrivate.begin() + static_cast<std::ptrdiff_t>(pos),
 			codecPrivate.begin() +
 			static_cast<std::ptrdiff_t>(pos + nalSize));
 
 		pos += nalSize;
 	}
+	output.insert(output.end(), converted.begin(), converted.end());
 
 	return true;
 }
 
 size_t H264Converter::process_data(const std::vector<uint8_t>& data, const FrameInfo&)
 {
+	if (m_nal_length_size == 0)
+	{
+		fail_output_track();
+		return 0;
+	}
+
 	std::vector<uint8_t> output_data;
 
 	if (!m_codec_private_written)

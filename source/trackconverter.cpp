@@ -50,7 +50,7 @@ void TrackConverter::run_loop(void)
 	std::cout << s.str();
 	s.str("");
 
-	while (m_keep_running)
+	while (true)
 	{
 		BlockData block;
 		size_t processed;
@@ -182,7 +182,10 @@ void TrackConverter::finish_processing(void)
 
 void TrackConverter::finish(void)
 {
-	m_keep_running = false;
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_keep_running = false;
+	}
 	m_data_available.notify_one();
 
 	if (m_thread.joinable())

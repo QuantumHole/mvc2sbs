@@ -213,7 +213,7 @@ static uint64_t GetGlobalTimecodeScale(const libmatroska::KaxTrackEntry* track)
 	const libmatroska::KaxTimecodeScale* element = FindElement<libmatroska::KaxTimecodeScale>(*track);
 
 	return element
-	    ? static_cast<uint64_t>(element->GetValue())
+	    ? element->GetValue()
 	    : defaultScale;
 }
 
@@ -250,7 +250,7 @@ static std::string GetTrackTitle(const libmatroska::KaxTrackEntry* track)
 		return "";
 	}
 
-	const std::string title = static_cast<std::string>(element->GetValueUTF8());
+	const std::string title = element->GetValueUTF8();
 	return title;
 }
 
@@ -854,7 +854,6 @@ void MKVStreamer::run(void)
 	catch (const std::exception& e)
 	{
 		std::cerr << "Fehler: " << e.what() << std::endl;
-		return;
 	}
 
 	/* notify all track converters of EOF. */
