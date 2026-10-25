@@ -208,7 +208,14 @@ static int makeTimeBase(const uint64_t timestampScale, AVRational& timeBase)
 	    : AVERROR(EINVAL);
 }
 
-TrackMuxer::TrackMuxer(const std::string& file_name)
+TrackMuxer::TrackMuxer(const std::string& file_name) :
+	m_tracks(),
+	m_output_context(nullptr),
+	m_mux_started(false),
+	m_mux_finished(false),
+	m_configuration_mutex(),
+	m_configuration_changed(),
+	m_configuration_failed(false)
 {
 	/* Create Matroska output. */
 	check_ffmpeg(
@@ -354,6 +361,11 @@ void TrackMuxer::add_file(
 
 size_t TrackMuxer::add_live_track(const TrackConverter::TrackInfo& info)
 {
+	return add_live_track(info, true);
+}
+
+size_t TrackMuxer::add_live_track(const TrackConverter::TrackInfo& info, const bool configured)
+{
 	if (m_mux_started)
 	{
 		throw std::logic_error("Cannot add a track after muxing has started");
@@ -365,6 +377,9 @@ size_t TrackMuxer::add_live_track(const TrackConverter::TrackInfo& info)
 	track.title = info.title;
 	track.live = true;
 	track.finished = false;
+	track.configuration = configured
+	    ? ConfigurationState::Ready
+	    : ConfigurationState::Pending;
 
 	track.output_stream = avformat_new_stream(m_output_context, nullptr);
 
@@ -401,6 +416,55 @@ size_t TrackMuxer::add_live_track(const TrackConverter::TrackInfo& info)
 	m_tracks.emplace_back(std::move(track));
 
 	return m_tracks.size() - 1;
+}
+
+void TrackMuxer::configure_live_track(
+	const size_t track_id,
+	const AVCodecParameters& parameters,
+	const AVRational time_base)
+{
+	std::lock_guard<std::mutex> lock(m_configuration_mutex);
+
+	if (track_id >= m_tracks.size())
+	{
+		throw std::out_of_range("TrackMuxer::configure_live_track: invalid track id");
+	}
+
+	TrackFile& track = m_tracks[track_id];
+	if (!track.live || track.configuration != ConfigurationState::Pending)
+	{
+		throw std::logic_error("TrackMuxer::configure_live_track: track is not pending");
+	}
+
+	check_ffmpeg(
+		avcodec_parameters_copy(track.output_stream->codecpar, &parameters),
+		"avcodec_parameters_copy");
+	track.output_stream->time_base = time_base;
+	track.configuration = ConfigurationState::Ready;
+	m_configuration_changed.notify_all();
+}
+
+void TrackMuxer::fail_live_track(const size_t track_id)
+{
+	{
+		std::lock_guard<std::mutex> lock(m_configuration_mutex);
+
+		if (track_id >= m_tracks.size())
+		{
+			throw std::out_of_range("TrackMuxer::fail_live_track: invalid track id");
+		}
+
+		TrackFile& track = m_tracks[track_id];
+		if (!track.live)
+		{
+			throw std::logic_error("TrackMuxer::fail_live_track: track is not live");
+		}
+
+		track.configuration = ConfigurationState::Failed;
+		m_configuration_failed = true;
+	}
+
+	m_configuration_changed.notify_all();
 }
 
 void TrackMuxer::push(
@@ -481,6 +545,30 @@ TrackMuxer::LivePacketResult TrackMuxer::get_live_packet(TrackFile& track, AVPac
 
 void TrackMuxer::prepare_stream(void)
 {
+	{
+		std::unique_lock<std::mutex> lock(m_configuration_mutex);
+		m_configuration_changed.wait(lock, [this] {
+			if (m_configuration_failed)
+			{
+				return true;
+			}
+
+			for (const TrackFile& track : m_tracks)
+			{
+				if (track.configuration == ConfigurationState::Pending)
+				{
+					return false;
+				}
+			}
+			return true;
+		});
+
+		if (m_configuration_failed)
+		{
+			throw std::runtime_error("Live track configuration failed before Matroska header");
+		}
+	}
+
 	/* Allocate packet buffers for all tracks. */
 	for (TrackFile& track : m_tracks)
 	{
@@ -522,6 +610,14 @@ void TrackMuxer::mux(void)
 		size_t num_eof = 0;
 		for (std::vector<TrackFile>::iterator track = m_tracks.begin(); true; ++track)
 		{
+			{
+				std::lock_guard<std::mutex> lock(m_configuration_mutex);
+				if (m_configuration_failed)
+				{
+					throw std::runtime_error("A live track failed during muxing");
+				}
+			}
+
 			if (track == m_tracks.end())
 			{
 				if (num_eof == m_tracks.size())
@@ -616,6 +712,14 @@ void TrackMuxer::finish_track(const size_t track_id)
 	}
 
 	TrackFile& track = m_tracks[track_id];
+	{
+		std::lock_guard<std::mutex> lock(m_configuration_mutex);
+		if (track.configuration == ConfigurationState::Pending)
+		{
+			track.configuration = ConfigurationState::Failed;
+			m_configuration_failed = true;
+		}
+	}
 
 	{
 		std::lock_guard<std::mutex> lock(track.mutex);
@@ -624,6 +728,7 @@ void TrackMuxer::finish_track(const size_t track_id)
 	}
 
 	track.condition.notify_all();
+	m_configuration_changed.notify_all();
 }
 
 void TrackMuxer::cleanup(void)

@@ -33,6 +33,15 @@ class TrackMuxer
 			int64_t dts = AV_NOPTS_VALUE;    ///< decoding timestamp.
 			int64_t duration = 0;            ///< frame display duration.
 			int flags = 0;                   ///< additional for the packet flags.
+
+			LivePacket(void) :
+				data(),
+				pts(AV_NOPTS_VALUE),
+				dts(AV_NOPTS_VALUE),
+				duration(0),
+				flags(0)
+			{
+			}
 		};
 
 		typedef enum
@@ -41,6 +50,13 @@ class TrackMuxer
 			NoPacket,
 			EndOfStream
 		} LivePacketResult;
+
+		enum class ConfigurationState
+		{
+			Ready,
+			Pending,
+			Failed
+		};
 
 		/** information about one input track (file or stream). */
 		struct TrackFile
@@ -62,11 +78,30 @@ class TrackMuxer
 			 */
 			bool live = false;                        ///< flag for live track.
 			bool finished = false;                    ///< end of stream indicator.
+			ConfigurationState configuration = ConfigurationState::Ready;
 			std::deque<LivePacket> queue = {};        ///< packet queue for live frames.
 			std::mutex mutex = {};                    ///< mutex for exclusive access to structure components.
 			std::condition_variable condition = {};   ///< condition variable signals finished/available frames.
 
-			TrackFile(void) = default;
+			TrackFile(void) :
+				language(),
+				title(),
+				format(nullptr),
+				input_stream(nullptr),
+				packet(nullptr),
+				eof(false),
+				output_stream(nullptr),
+				live(false),
+				finished(false),
+				configuration(ConfigurationState::Ready),
+				queue(),
+				mutex(),
+				condition()
+			{
+			}
+
+			TrackFile(const TrackFile&) = delete;
+			TrackFile& operator=(const TrackFile&) = delete;
 
 			/** explicit copy constructor, because mutex and condition variable are not copyable.
 			 * @param other reference to template object.
@@ -81,6 +116,7 @@ class TrackMuxer
 				output_stream(other.output_stream),
 				live(other.live),
 				finished(other.finished),
+				configuration(other.configuration),
 				queue(std::move(other.queue))
 			{
 			}
@@ -90,6 +126,9 @@ class TrackMuxer
 		AVFormatContext* m_output_context;      ///< output context.
 		bool m_mux_started = false;             ///< flag indicating mux start.
 		bool m_mux_finished = false;            ///< flag indicating mux end.
+		std::mutex m_configuration_mutex;
+		std::condition_variable m_configuration_changed;
+		bool m_configuration_failed = false;
 
 		static TrackMuxer* m_instance;          ///< singleton instance pointer.
 
@@ -97,6 +136,8 @@ class TrackMuxer
 		 * @param file_name output file name.
 		 */
 		explicit TrackMuxer(const std::string& file_name);
+		TrackMuxer(const TrackMuxer&) = delete;
+		TrackMuxer& operator=(const TrackMuxer&) = delete;
 
 		/** Get the next packet from a track.
 		 * @param track track information.
@@ -141,6 +182,13 @@ class TrackMuxer
 		 * @return output track id used by push() and finish_track().
 		 */
 		size_t add_live_track(const TrackConverter::TrackInfo& info);
+		size_t add_live_track(const TrackConverter::TrackInfo& info, bool configured);
+
+		/** Publish final codec parameters before the output header is written. */
+		void configure_live_track(size_t track_id, const AVCodecParameters& parameters, AVRational time_base);
+
+		/** Mark a track's output configuration as failed and wake mux(). */
+		void fail_live_track(size_t track_id);
 
 		/** Push one encoded packet into a live track.
 		 * The data must represent one complete encoded packet/frame,
