@@ -16,10 +16,9 @@ class CopyConverter : public TrackConverter
 
 	public:
 		/** constructor.
-		 * @param input_file_name path to input file.
 		 * @param trackinfo information about the assigned track.
 		 */
-		explicit CopyConverter(const std::string& input_file_name, const TrackInfo& trackinfo);
+		explicit CopyConverter(const TrackInfo& trackinfo);
 };
 
 #endif

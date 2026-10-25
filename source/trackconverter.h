@@ -27,8 +27,8 @@ class TrackConverter
 			std::vector<uint8_t> codecPrivate = {};
 			uint64_t width = 0;
 			uint64_t height = 0;
-			uint64_t codecDelay = 0;        // ns
-			uint64_t defaultDuration = 0;   // ns
+			uint64_t codecDelay = 0;                   // nanoseconds
+			uint64_t defaultDuration = 0;              // nanoseconds
 			uint64_t timestampScale = 1'000'000;
 			std::string language = "und";              ///< track language, default "undefined"
 			std::string title = "";                    ///< track title
@@ -80,10 +80,9 @@ class TrackConverter
 		};
 
 		/** constructor.
-		 * @param input_file_name path to input file.
 		 * @param trackinfo information about the assigned track.
 		 */
-		explicit TrackConverter(const std::string& input_file_name, const TrackInfo& trackinfo);
+		explicit TrackConverter(const TrackInfo& trackinfo);
 
 		/** destructor. */
 		virtual ~TrackConverter(void);
@@ -110,21 +109,10 @@ class TrackConverter
 		void finish(void);
 
 	protected:
-		/** retrieve the output stream.
-		 * @return output stream of the current converter.
-		 */
-		std::ofstream& output_stream(void);
-
 		/** output muxer track ID.
 		 * @return muxer track ID.
 		 */
 		size_t mux_id(void) const;
-
-		/** write bytes to output stream.
-		 * @param data pointer to output data.
-		 * @param size number of bytes for the output stream.
-		 */
-		void write(const uint8_t* data, const size_t size);
 
 		/** process packets of data.
 		 * @param data one bunch of data to be processed. Data may be cut at arbitrary positions into packets.
@@ -137,20 +125,13 @@ class TrackConverter
 		virtual void finish_processing(void);
 
 	private:
-		const std::string m_input_file_name;       ///< file name of the input file, used to derive the output file name.
 		const TrackInfo m_track_info;              ///< track meta data.
-		std::ofstream m_output;                    ///< output stream.
 		std::deque<BlockData> m_data_buffer;       ///< queue for the read input packets from input file.
 		std::mutex m_mutex;                        ///< mutex to syncronize communication between thread and main program.
 		std::thread m_thread;                      ///< thread variable for the thread running process_data().
 		std::condition_variable m_data_available;  ///< condition variable for signalling when more input data for the thread is available.
 		bool m_keep_running;                       ///< flag for stopping and exiting the thread.
 		const size_t m_mux_track_id;               ///< track ID for the output muxer.
-
-		/** generate a unique output file name from input meta data.
-		 * @return file name for the output stream target.
-		 */
-		std::string output_file_name(void) const;
 
 		/** thread loop for the converter.
 		 * This loop regularly checks the input queue and calls process_data().

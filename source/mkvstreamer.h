@@ -72,6 +72,12 @@ class MKVStreamer
 		 */
 		void streamSegment(libebml::EbmlStream& stream, const size_t fileSize);
 
+		/** generate an output file name based on the input file name.
+		 * @param input_file_name input file name.
+		 * @return output file name.
+		 */
+		std::string output_file_name(const std::string& input_file_name) const;
+
 	public:
 		/** constructor.
 		 * @param filename input file name.

@@ -5,6 +5,7 @@
 #include "mkvstreamer.h"
 #include "pgsconverter.h"
 #include "h264converter.h"
+#include "copyconverter.h"
 
 #include <ebml/EbmlHead.h>
 #include <ebml/StdIOCallback.h>
@@ -203,7 +204,7 @@ static uint64_t GetDefaultDuration(const libmatroska::KaxTrackEntry* track)
 
 static uint64_t GetGlobalTimecodeScale(const libmatroska::KaxTrackEntry* track)
 {
-    constexpr uint64_t defaultScale = 1'000'000; // ns
+    constexpr uint64_t defaultScale = 1'000'000; // nanoseconds
 	if (!track)
 	{
         return defaultScale;
@@ -324,7 +325,7 @@ MKVStreamer::MKVStreamer(const std::string& filename) :
 	m_input_file_size(0),
 	m_converters(),
 	m_last_status_time(std::chrono::steady_clock::now()),
-	m_muxer(TrackMuxer::instance(m_input_file_name + ".muxed.mkv")),
+	m_muxer(TrackMuxer::instance(output_file_name(filename))),
 	m_thread_mux()
 {
 }
@@ -335,6 +336,20 @@ MKVStreamer::~MKVStreamer(void)
 	{
 		m_thread_mux.join();
 	}
+}
+
+std::string MKVStreamer::output_file_name(const std::string& input_file_name) const
+{
+	const size_t slash = input_file_name.find_last_of("/\\");
+	const size_t start = (slash == std::string::npos) ? 0 : (slash + 1);
+	const size_t dot = input_file_name.find_last_of('.');
+	const size_t ext = ((dot != std::string::npos) && (dot >= start)) ? dot : input_file_name.size();
+	const std::string directory = (slash == std::string::npos) ? std::string() : input_file_name.substr(0, slash + 1);
+
+	return directory +
+	       input_file_name.substr(start, ext - start) +
+		   ".sbs" +
+	       input_file_name.substr(ext);
 }
 
 void MKVStreamer::readBlock(
@@ -399,7 +414,7 @@ void MKVStreamer::readBlock(
 	m_last_status_time = now;
 
 	const double seconds = static_cast<double>(blockPts) / 1e9;
-	std::cerr << "queued timecode: " << seconds << "s.          \r";
+	std::cout << "queued timecode: " << seconds << "s.          \r";
 	fflush(stdout);
 }
 
@@ -693,11 +708,12 @@ void MKVStreamer::readTracks(libmatroska::KaxTracks& tracksElement, libebml::Ebm
 		}
 		else if (info.codecId == "V_MPEG4/ISO/AVC")
 		{
-			m_converters[info.trackNumber] = new H264Converter(m_input_file_name, info);
+			m_converters[info.trackNumber] = new H264Converter(info);
 		}
 		else
 		{
 			// copy all other tracks
+			m_converters[info.trackNumber] = new CopyConverter(info);
 			// m_muxer.add_file(m_input_file_name, info.trackNumber, "matroska", "", "");
 		}
 	}

@@ -13,13 +13,11 @@
 #include <vector>
 #include <algorithm>
 
-H264Converter::H264Converter(
-	const std::string& input_file_name,
-	const TrackInfo& info) :
-	TrackConverter(input_file_name, info),
+H264Converter::H264Converter(const TrackInfo& info) :
+	TrackConverter(info),
 	m_nal_length_size(0),
 	m_codec_private_written(false),
-	m_mvc2sbs(output_stream(), mux_id())
+	m_mvc2sbs(mux_id())
 {
 	if (info.codecPrivate.size() < 5)
 	{

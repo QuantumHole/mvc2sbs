@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cerrno>
 #include <ostream>
 #include <stdexcept>
 #include <vector>
@@ -26,10 +25,9 @@ class MVC2SBSConverter
 {
 	public:
 		/** constructor.
-		 * @param output output stream for converted data.
 		 * @param muxer_id ID number of the muxed output stream.
 		 */
-		explicit MVC2SBSConverter(std::ostream& output, const size_t muxer_id);
+		explicit MVC2SBSConverter(const size_t muxer_id);
 
 		/** destructor. */
 		~MVC2SBSConverter(void);
@@ -92,10 +90,9 @@ class MVC2SBSConverter
 		 */
 		bool writeFrameH264(const Edge264MvcFrame& edge264frame);
 
-		Edge264MvcDecoder* m_decoder;         ///< external decoder for MVC frames
-		std::ostream& m_output;            ///< output stream for compressed or uncompressed frames.
-		std::vector<uint8_t> m_input;      ///< input buffer for data passed into feed().
-		bool m_finished;                   ///< flag that finish() has been called.
+		Edge264MvcDecoder* m_decoder;            ///< external decoder for MVC frames
+		std::vector<uint8_t> m_input;            ///< input buffer for data passed into feed().
+		bool m_finished;                         ///< flag that finish() has been called.
 
 		// libAV interface
 		AVCodecContext* m_context_av = nullptr;  ///< AVCodec context.

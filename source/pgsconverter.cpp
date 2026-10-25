@@ -168,7 +168,7 @@ static bool saveRGBA32AsPNG(
 }
 
 PGSConverter::PGSConverter(const std::string& input_file_name, const TrackInfo& info) :
-	TrackConverter(input_file_name, info),
+	TrackConverter(info),
 	m_save_images(false),
 	m_pgs_stream(),
 	m_output_srt(input_file_name + "." + std::to_string(info.trackNumber) + "." + info.language + ".srt"),

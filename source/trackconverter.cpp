@@ -13,58 +13,8 @@
 #include <stdexcept>
 #include <unordered_map>
 
-/**
- * Convert a Matroska CodecID to the FFmpeg input format name
- * used by av_find_input_format().
- * This is also used to determine the file extension for
- * elementary streams containing encoded data.
- *
- * Examples:
- *
- *   S_HDMV/PGS          -> "sup"
- *   S_TEXT/UTF8         -> "srt"
- *   S_TEXT/ASS          -> "ass"
- *   A_AC3               -> "ac3"
- *   A_EAC3              -> "eac3"
- *   A_DTS               -> "dts"
- *   V_MPEG4/ISO/AVC     -> "h264"
- *   V_MPEGH/ISO/HEVC    -> "hevc"
- */
-static std::string ffmpeg_format_from_matroska_codec_id(const std::string& codec_id)
-{
-	static const std::unordered_map<std::string, std::string>  mapping = {
-		{"S_HDMV/PGS",       "sup"    },
-		{"S_TEXT/UTF8",      "srt"    },
-		{"S_TEXT/ASS",       "ass"    },
-		{"S_TEXT/SSA",       "ass"    },
-		{"S_VOBSUB",         "vobsub" },
-		{"S_DVBSUB",         "dvbsub" },
-		{"S_TEXT/WEBVTT",    "webvtt" },
-		{"A_AC3",            "ac3"    },
-		{"A_EAC3",           "eac3"   },
-		{"A_DTS",            "dts"    },
-		{"A_AAC",            "aac"    },
-		{"A_MPEG/L3",        "mp3"    },
-		{"A_MPEG/L2",        "mp2"    },
-		{"A_FLAC",           "flac"   },
-		{"A_OPUS",           "ogg"    },
-		{"A_VORBIS",         "ogg"    },
-		{"V_MPEG4/ISO/AVC",  "h264"   },
-		{"V_MPEGH/ISO/HEVC", "hevc"   },
-		{"V_AV1",            "av1"    },
-		{"V_VP8",            "vp8"    },
-		{"V_VP9",            "vp9"    }
-	};
-
-	const std::unordered_map<std::string, std::string>::const_iterator it = mapping.find(codec_id);
-
-	return it != mapping.end() ? it->second : "none";
-}
-
-TrackConverter::TrackConverter(const std::string& input_file_name, const TrackInfo& track_info) :
-	m_input_file_name(input_file_name),
+TrackConverter::TrackConverter(const TrackInfo& track_info) :
 	m_track_info(track_info),
-	m_output(),
 	m_data_buffer(),
 	m_mutex(),
 	m_thread(),
@@ -84,39 +34,15 @@ const TrackConverter::TrackInfo& TrackConverter::track_info(void) const
 	return m_track_info;
 }
 
-std::string TrackConverter::output_file_name(void) const
-{
-	const size_t slash = m_input_file_name.find_last_of("/\\");
-	const size_t start = (slash == std::string::npos) ? 0 : (slash + 1);
-	const size_t dot = m_input_file_name.find_last_of('.');
-	const size_t ext = ((dot != std::string::npos) && (dot >= start)) ? dot : m_input_file_name.size();
-	const std::string directory = (slash == std::string::npos) ? std::string() : m_input_file_name.substr(0, slash + 1);
-
-	return directory +
-	       m_input_file_name.substr(start, ext - start) +
-	       ".track" +
-	       std::to_string(m_track_info.trackNumber) +
-	       "." + m_track_info.language +
-	       "." + ffmpeg_format_from_matroska_codec_id(m_track_info.codecId);
-}
-
 void TrackConverter::run_loop(void)
 {
 	std::stringstream s;
 
-	const std::string name = output_file_name();
-	const std::string ffmpeg_id = ffmpeg_format_from_matroska_codec_id(m_track_info.codecId);
-
-	s << "Track " << m_track_info.trackNumber << " -> " << name << std::endl;
-	std::cerr << s.str();
+	s << "Track " << m_track_info.trackNumber
+	  << " -> " << m_track_info.codecId
+	  << ", " << m_track_info.language << std::endl;
+	std::cout << s.str();
 	s.str("");
-
-	m_output.open(name, std::ios::binary | std::ios::out | std::ios::trunc);
-
-	if (!m_output)
-	{
-		throw std::runtime_error("failed opening file: " + name);
-	}
 
 	while (m_keep_running)
 	{
@@ -192,24 +118,9 @@ void TrackConverter::add_data(const uint8_t* data, const size_t size, const Fram
 	}
 }
 
-std::ofstream& TrackConverter::output_stream(void)
-{
-	return m_output;
-}
-
 size_t TrackConverter::mux_id(void) const
 {
 	return m_mux_track_id;
-}
-
-void TrackConverter::write(const uint8_t* data, const size_t size)
-{
-	m_output.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));
-
-	if (!m_output)
-	{
-		throw std::runtime_error("failed writing SUP file");
-	}
 }
 
 void TrackConverter::finish_processing(void)
@@ -225,12 +136,6 @@ void TrackConverter::finish(void)
 	if (m_thread.joinable())
 	{
 		m_thread.join();
-	}
-
-	if (m_output.good())
-	{
-		m_output.flush();
-		m_output.close();
 	}
 
 	TrackMuxer::instance().finish_track(m_mux_track_id);
