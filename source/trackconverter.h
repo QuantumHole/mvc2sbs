@@ -13,6 +13,10 @@
 #include <deque>
 #include <condition_variable>
 
+extern "C" {
+#include <libavcodec/avcodec.h>
+}
+
 /** Abstract class for receiving data of one MKV track and processing it in
  * arbitrary ways.
  */
@@ -83,6 +87,7 @@ class TrackConverter
 		 * @param trackinfo information about the assigned track.
 		 */
 		explicit TrackConverter(const TrackInfo& trackinfo);
+		TrackConverter(const TrackInfo& trackinfo, bool defer_output_configuration);
 
 		/** destructor. */
 		virtual ~TrackConverter(void);
@@ -113,6 +118,8 @@ class TrackConverter
 		 * @return muxer track ID.
 		 */
 		size_t mux_id(void) const;
+		void configure_output_track(const AVCodecParameters& parameters, AVRational time_base);
+		void fail_output_track(void);
 
 		/** process packets of data.
 		 * @param data one bunch of data to be processed. Data may be cut at arbitrary positions into packets.
@@ -132,6 +139,7 @@ class TrackConverter
 		std::condition_variable m_data_available;  ///< condition variable for signalling when more input data for the thread is available.
 		bool m_keep_running;                       ///< flag for stopping and exiting the thread.
 		const size_t m_mux_track_id;               ///< track ID for the output muxer.
+		bool m_output_configured;
 
 		/** thread loop for the converter.
 		 * This loop regularly checks the input queue and calls process_data().

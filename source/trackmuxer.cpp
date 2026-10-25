@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <iostream>
 #include <stdexcept>
 #include <vector>
 #include <string>
@@ -697,10 +698,17 @@ void TrackMuxer::mux(void)
 		cleanup();
 		m_mux_finished = true;
 	}
+	catch (const std::exception& error)
+	{
+		cleanup();
+		m_mux_finished = true;
+		std::cerr << "Muxing failed: " << error.what() << std::endl;
+	}
 	catch (...)
 	{
 		cleanup();
-		throw;
+		m_mux_finished = true;
+		std::cerr << "Muxing failed with an unknown error" << std::endl;
 	}
 }
 

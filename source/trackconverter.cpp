@@ -14,13 +14,19 @@
 #include <unordered_map>
 
 TrackConverter::TrackConverter(const TrackInfo& track_info) :
+	TrackConverter(track_info, false)
+{
+}
+
+TrackConverter::TrackConverter(const TrackInfo& track_info, const bool defer_output_configuration) :
 	m_track_info(track_info),
 	m_data_buffer(),
 	m_mutex(),
 	m_thread(),
 	m_data_available(),
 	m_keep_running(true),
-	m_mux_track_id(TrackMuxer::instance().add_live_track(track_info))
+	m_mux_track_id(TrackMuxer::instance().add_live_track(track_info, !defer_output_configuration)),
+	m_output_configured(!defer_output_configuration)
 {
 }
 
@@ -66,11 +72,29 @@ void TrackConverter::run_loop(void)
 			// keep this function inside the locked section.
 			// Otherwise, this buffer gets filled with uncompressed
 			// frames, waiting to be re-compressed and saved to disk.
-			processed = process_data(block.data, block.info);
+			try
+			{
+				processed = process_data(block.data, block.info);
+			}
+			catch (const std::exception& error)
+			{
+				std::cerr << "Track " << m_track_info.trackNumber
+				          << " processing failed: " << error.what() << std::endl;
+				processed = 0;
+				m_keep_running = false;
+			}
+			catch (...)
+			{
+				std::cerr << "Track " << m_track_info.trackNumber
+				          << " processing failed with an unknown error" << std::endl;
+				processed = 0;
+				m_keep_running = false;
+			}
 		}
 
 		if (processed != block.data.size())
 		{
+			fail_output_track();
 			std::cerr << "block in track "
 			          << m_track_info.trackNumber
 			          << " at "
@@ -80,7 +104,22 @@ void TrackConverter::run_loop(void)
 		}
 	}
 
-	finish_processing();
+	try
+	{
+		finish_processing();
+	}
+	catch (const std::exception& error)
+	{
+		std::cerr << "Track " << m_track_info.trackNumber
+		          << " finalization failed: " << error.what() << std::endl;
+		fail_output_track();
+	}
+	catch (...)
+	{
+		std::cerr << "Track " << m_track_info.trackNumber
+		          << " finalization failed with an unknown error" << std::endl;
+		fail_output_track();
+	}
 }
 
 void TrackConverter::runner(TrackConverter* instance)
@@ -123,6 +162,19 @@ size_t TrackConverter::mux_id(void) const
 	return m_mux_track_id;
 }
 
+void TrackConverter::configure_output_track(
+	const AVCodecParameters& parameters,
+	const AVRational time_base)
+{
+	TrackMuxer::instance().configure_live_track(m_mux_track_id, parameters, time_base);
+	m_output_configured = true;
+}
+
+void TrackConverter::fail_output_track(void)
+{
+	TrackMuxer::instance().fail_live_track(m_mux_track_id);
+}
+
 void TrackConverter::finish_processing(void)
 {
 	// nothing to do usually.
@@ -136,6 +188,30 @@ void TrackConverter::finish(void)
 	if (m_thread.joinable())
 	{
 		m_thread.join();
+	}
+	else
+	{
+		try
+		{
+			finish_processing();
+		}
+		catch (const std::exception& error)
+		{
+			std::cerr << "Track " << m_track_info.trackNumber
+			          << " finalization failed: " << error.what() << std::endl;
+			fail_output_track();
+		}
+		catch (...)
+		{
+			std::cerr << "Track " << m_track_info.trackNumber
+			          << " finalization failed with an unknown error" << std::endl;
+			fail_output_track();
+		}
+	}
+
+	if (!m_output_configured)
+	{
+		fail_output_track();
 	}
 
 	TrackMuxer::instance().finish_track(m_mux_track_id);
