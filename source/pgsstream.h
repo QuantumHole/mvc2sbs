@@ -44,6 +44,14 @@ class PGSStream {
 			std::vector<uint32_t> pixels = {};   // 32bit RGBA values
 		};
 
+		/** complete visible state described by one PCS. */
+		struct PGSComposition
+		{
+			dvec2 time = {0.0, 0.0};
+			uvec2 screen = {0, 0};
+			std::vector<PGSFrame> objects = {};
+		};
+
 		/** PGS segment buffer. */
 		struct PGSSegment
 		{
@@ -67,15 +75,15 @@ class PGSStream {
 		 */
 		void push(const std::vector<uint8_t>& data);
 
-		/** reports when there are decoded frames from the input stream.
-		 * @return indicates that decoded frames are ready to be processed.
+		/** reports when there are decoded PCS compositions from the input stream.
+		 * @return indicates that a complete composition is ready to be processed.
 		 */
-		bool hasNextFrame(void) const;
+		bool hasNextComposition(void) const;
 
-		/** retrieves one decoded frame for processing.
-		 * @return the decoded frame.
+		/** retrieves one decoded composition for processing.
+		 * @return the decoded composition.
 		 */
-		PGSFrame getNextFrame(void);
+		PGSComposition getNextComposition(void);
 
 		/** resets all buffers and counters for a new input stream. */
 		void reset(void);
@@ -86,6 +94,11 @@ class PGSStream {
 		 * @return list of PGS segments.
 		 */
 		std::vector<PGSSegment> saveFrame(const PGSFrame& frame, const bool sbs_double);
+
+		/** encode one complete PCS composition as PGS display sets. */
+		std::vector<PGSSegment> saveComposition(
+			const PGSComposition& composition,
+			const bool sbs_double);
 
 		/** serialize segment into a stream of bytes.
 		 * @param segment input segment.
@@ -148,8 +161,8 @@ class PGSStream {
 		};
 
 		std::vector<uint8_t> m_input_data = {};               ///< buffer of input data.
-		std::deque<PGSFrame> m_frame_buffer = {};             ///< buffer of decoded frames without hide timestamps.
-		std::deque<PGSFrame> m_input_frames = {};             ///< buffer of complete frames with all timing information.
+		std::deque<PGSComposition> m_frame_buffer = {};        ///< decoded compositions awaiting their hide timestamp.
+		std::deque<PGSComposition> m_input_frames = {};        ///< complete compositions with timing information.
 
 		std::map<uint8_t, Palette> m_palettes = {};           ///< palette buffer for multiple palettes.
 		std::map<uint16_t, Object> m_objects = {};            ///< object buffer for multiple subtitle objects.
@@ -229,6 +242,15 @@ class PGSStream {
 			const uint8_t paletteId,
 			const uint8_t frame_copies) const;
 
+		PGSSegment writePCS(
+			const PGSComposition& composition,
+			const std::vector<uint16_t>& objectIds,
+			const uint32_t pts,
+			const uint16_t compositionNumber,
+			const composition_t compositionState,
+			const uint8_t paletteId,
+			const uint8_t frame_copies) const;
+
 		/** write Window Definition Segment.
 		 * @param frame current frame to be encoded.
 		 * @param pts display timestamp of segment.
@@ -236,6 +258,11 @@ class PGSStream {
 		 */
 		PGSSegment writeWDS(
 			const PGSFrame& frame,
+			const uint32_t pts) const;
+
+		PGSSegment writeWDS(
+			const uint16_t width,
+			const uint16_t height,
 			const uint32_t pts) const;
 
 		/** write Palette Definition Segment.

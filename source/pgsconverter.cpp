@@ -289,30 +289,39 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 
 	m_pgs_stream.push(pgsdata);
 
-	while (m_pgs_stream.hasNextFrame())
+	while (m_pgs_stream.hasNextComposition())
 	{
-		PGSStream::PGSFrame frame = m_pgs_stream.getNextFrame();
-		append_ocr(frame);
+		PGSStream::PGSComposition composition = m_pgs_stream.getNextComposition();
+		for (const PGSStream::PGSFrame& object : composition.objects)
+		{
+			PGSStream::PGSFrame ocrFrame = object;
+			ocrFrame.time = composition.time;
+			append_ocr(ocrFrame);
+		}
 
-		const std::vector<PGSStream::PGSSegment> segments = m_pgs_stream.saveFrame(frame, true);
+		const std::vector<PGSStream::PGSSegment> segments =
+			m_pgs_stream.saveComposition(composition, true);
+		std::vector<uint8_t> displaySet;
+		const int64_t timestampScale = static_cast<int64_t>(track_info().timestampScale);
+		const int64_t startNs = static_cast<int64_t>(composition.time.s * 1e9);
+		const int64_t endNs = static_cast<int64_t>(composition.time.t * 1e9);
+		const int64_t startPts = startNs / timestampScale;
+		const int64_t endPts = endNs / timestampScale;
+		const int64_t duration = endPts - startPts;
+
 		for (const PGSStream::PGSSegment& seg: segments)
 		{
-			std::vector<uint8_t> segdata;
-			// /* write full PGS stream into output file. */
-			// segdata = m_pgs_stream.serializeSegment(seg, true);
-			// write(segdata.data(), segdata.size());
-
-			/* write segments without headers into muxer */
-			segdata = m_pgs_stream.serializeSegment(seg, false);
-			muxer.push(
-				mux_id(),
-				segdata,
-				static_cast<int64_t>(info.pts / track_info().timestampScale),
-				0,
-				static_cast<int64_t>(info.duration / track_info().timestampScale),
-				0);
-
+			std::vector<uint8_t> segmentData = m_pgs_stream.serializeSegment(seg, false);
+			displaySet.insert(displaySet.end(), segmentData.begin(), segmentData.end());
 		}
+
+		muxer.push(
+			mux_id(),
+			displaySet,
+			startPts,
+			startPts,
+			duration,
+			0);
 	}
 
 	return offset;

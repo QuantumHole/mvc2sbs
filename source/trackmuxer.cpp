@@ -17,6 +17,7 @@ extern "C" {
 #include <libavutil/dict.h>
 #include <libavutil/error.h>
 #include <libavcodec/codec_id.h>
+#include <libavutil/log.h>
 }
 
 #include "trackconverter.h"
@@ -229,6 +230,8 @@ TrackMuxer::TrackMuxer(const std::string& file_name) :
 			avio_open(&m_output_context->pb, file_name.c_str(), AVIO_FLAG_WRITE),
 			"avio_open");
 	}
+
+    av_log_set_level(AV_LOG_ERROR);
 }
 
 TrackMuxer& TrackMuxer::instance(const std::string& file_name)
