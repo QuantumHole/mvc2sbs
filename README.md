@@ -8,18 +8,13 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 mkvmvc2sbs is a tool for converting MKV files with MVC video into SBS format.
 The video stream is converted from MVC to SBS format. This doubles the video dimension horizontally.
-Subtitles in PGS/SUP format are extracted and saved as PGS/SUP files.
-As PGS/SUP is an image format, their horizontal dimensions are doubled as well.
+Subtitles in PGS/SUP format are also converted to SBS format by duplicating/doubling all frames horizontally.
 Additionally, subtitles in supported languages are converted into
 text via optical character recognition (OCR).
 Recognized subtitles are saved in SubRip (SRT) format.
 
-Converted tracks are saved beside the original file with the appropriate file extensions
-suitable for the contained track format.
-
-The saved tracks can be merged into a single MKV file, e.g. with mkvtoolnix.
-This last step of re-muxing should eventually also be performed automatically.
-Nevertheless, this has not yet been implemented.
+All convertered tracks are muxed back into an MKV output file, so playback may start right after
+the conversion is complete.
 
 # Dependencies
 

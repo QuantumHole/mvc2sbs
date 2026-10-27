@@ -33,8 +33,16 @@ OBJECTS := \
 CXXFLAGS += -isystem edge264-mvc
 
 .PHONY: all
+.PHONY: check-pgs
 
 all: $(TARGET)
+
+check-pgs: $(BUILD_DIR)/pgsstream_composition_test
+	@$<
+
+$(BUILD_DIR)/pgsstream_composition_test: source/tests/pgsstream_composition_test.cpp source/pgsstream.cpp | $(BUILD_DIR)
+	@echo "[$(CXX)] PGS composition regression test"
+	@$(CXX) $(filter-out -c,$(CXXFLAGS)) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 $(TARGET): $(OBJECTS)
 	@echo "[$(LD)] $@"
