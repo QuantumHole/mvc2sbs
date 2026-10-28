@@ -32,7 +32,7 @@ class TrackMuxer
 			int64_t pts = AV_NOPTS_VALUE;    ///< presentation timestamp.
 			int64_t dts = AV_NOPTS_VALUE;    ///< decoding timestamp.
 			int64_t duration = 0;            ///< frame display duration.
-			int flags = 0;                   ///< additional for the packet flags.
+			int flags = 0;                   ///< additional flags for the packet.
 
 			LivePacket(void) :
 				data(),
@@ -44,18 +44,21 @@ class TrackMuxer
 			}
 		};
 
+		/** result of live packet reception. */
 		typedef enum
 		{
-			PacketReady,
-			NoPacket,
-			EndOfStream
+			PacketReady,		///< live packet available in queue.
+			NoPacket,           ///< no live packet available in queue.
+			EndOfStream         ///< no more live packets will be submitted for this track.
 		} LivePacketResult;
 
+		/** state of track configuration. */
 		enum class ConfigurationState
 		{
-			Ready,
-			Pending,
-			Failed
+			Ready,              ///< track is ready for configuration.
+			Pending,            ///< track is waiting for configuration.
+			Configured,         ///< track has been configured.
+			Failed              ///< track configuration has failed.
 		};
 
 		/** information about one input track (file or stream). */
@@ -72,13 +75,14 @@ class TrackMuxer
 
 			/* Output stream. */
 			AVStream* output_stream = nullptr;  ///< AV output stream.
+			AVRational input_time_base = AVRational{0, 1}; ///< time base used by live packets.
 
 			/* Live track information.
 			 * If live == true, format/input_stream/packet are not used.
 			 */
 			bool live = false;                        ///< flag for live track.
 			bool finished = false;                    ///< end of stream indicator.
-			ConfigurationState configuration = ConfigurationState::Ready;
+			ConfigurationState configuration = ConfigurationState::Ready;  ///< track configuration status.
 			std::deque<LivePacket> queue = {};        ///< packet queue for live frames.
 			std::mutex mutex = {};                    ///< mutex for exclusive access to structure components.
 			std::condition_variable condition = {};   ///< condition variable signals finished/available frames.
@@ -91,6 +95,7 @@ class TrackMuxer
 				packet(nullptr),
 				eof(false),
 				output_stream(nullptr),
+				input_time_base{0, 1},
 				live(false),
 				finished(false),
 				configuration(ConfigurationState::Ready),
@@ -114,6 +119,7 @@ class TrackMuxer
 				packet(std::exchange(other.packet, nullptr)),
 				eof(other.eof),
 				output_stream(other.output_stream),
+				input_time_base(other.input_time_base),
 				live(other.live),
 				finished(other.finished),
 				configuration(other.configuration),
@@ -126,9 +132,9 @@ class TrackMuxer
 		AVFormatContext* m_output_context;      ///< output context.
 		bool m_mux_started = false;             ///< flag indicating mux start.
 		bool m_mux_finished = false;            ///< flag indicating mux end.
-		std::mutex m_configuration_mutex;
-		std::condition_variable m_configuration_changed;
-		bool m_configuration_failed = false;
+		std::mutex m_configuration_mutex;       ///< mutex for exclusive access to configuration state.
+		std::condition_variable m_configuration_changed;   ///< condition variable signals configuration state change.
+		bool m_configuration_failed = false;    ///< flag indicating configuration failure.
 
 		static TrackMuxer* m_instance;          ///< singleton instance pointer.
 
@@ -177,18 +183,30 @@ class TrackMuxer
 			const std::string& language,
 			const std::string& title);
 
-		/** Add a live track.
+		/** Add a live track that is already configured.
 		 * @param info track information from demuxer.
+		 * @param configured true if the track is already configured, false if it will be configured later.
 		 * @return output track id used by push() and finish_track().
 		 */
-		size_t add_live_track(const TrackConverter::TrackInfo& info);
-		size_t add_live_track(const TrackConverter::TrackInfo& info, bool configured);
+		size_t add_live_track(const TrackConverter::TrackInfo& info, const bool configured = true);
 
-		/** Publish final codec parameters before the output header is written. */
-		void configure_live_track(size_t track_id, const AVCodecParameters& parameters, AVRational time_base);
+		/** Publish final codec parameters before the output header is written.
+		 * @param track_id ID number of the track.
+		 * @param parameters codec parameters for the track.
+		 * @param time_base time base used by the live packets.
+		 * @throws std::logic_error if the track is not a live track.
+		 * @throws std::out_of_range if the track_id is invalid.
+		 * @throws std::runtime_error if the track is already configured, finished, or failed.
+		 */
+		void configure_live_track(const size_t track_id, const AVCodecParameters& parameters, const AVRational time_base);
 
-		/** Mark a track's output configuration as failed and wake mux(). */
-		void fail_live_track(size_t track_id);
+		/** Mark a track's output configuration as failed and wake mux().
+		 * @param track_id ID number of the track.
+		 * @throws std::logic_error if the track is not a live track.
+		 * @throws std::out_of_range if the track_id is invalid.
+		 * @throws std::runtime_error if the track is already configured, finished, or failed.
+		 */
+		void fail_live_track(const size_t track_id);
 
 		/** Push one encoded packet into a live track.
 		 * The data must represent one complete encoded packet/frame,
@@ -203,17 +221,17 @@ class TrackMuxer
 		 * @param flags additional flags for the track.
 		 */
 		void push(
-			size_t track_id,
+			const size_t track_id,
 			const std::vector<uint8_t>& data,
-			int64_t pts,
-			int64_t dts,
-			int64_t duration = 0,
-			int flags = 0);
+			const int64_t pts,
+			const int64_t dts,
+			const int64_t duration = 0,
+			const int flags = 0);
 
 		/** Signal that no more packets will be submitted for this track.
 		 * @param track_id ID number of track.
 		 */
-		void finish_track(size_t track_id);
+		void finish_track(const size_t track_id);
 
 		/** Start muxing.
 		 * This function blocks until all tracks have finished.

@@ -13,11 +13,6 @@
 #include <stdexcept>
 #include <unordered_map>
 
-TrackConverter::TrackConverter(const TrackInfo& track_info) :
-	TrackConverter(track_info, false)
-{
-}
-
 TrackConverter::TrackConverter(const TrackInfo& track_info, const bool defer_output_configuration) :
 	m_track_info(track_info),
 	m_data_buffer(),

@@ -301,7 +301,8 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 
 		const std::vector<PGSStream::PGSSegment> segments =
 			m_pgs_stream.saveComposition(composition, true);
-		std::vector<uint8_t> displaySet;
+		const std::vector<PGSStream::PGSDisplaySet> displaySets =
+			m_pgs_stream.serializeDisplaySets(segments);
 		const int64_t timestampScale = static_cast<int64_t>(track_info().timestampScale);
 		const int64_t startNs = static_cast<int64_t>(composition.time.s * 1e9);
 		const int64_t endNs = static_cast<int64_t>(composition.time.t * 1e9);
@@ -309,19 +310,20 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 		const int64_t endPts = endNs / timestampScale;
 		const int64_t duration = endPts - startPts;
 
-		for (const PGSStream::PGSSegment& seg: segments)
+		for (size_t index = 0; index < displaySets.size(); ++index)
 		{
-			std::vector<uint8_t> segmentData = m_pgs_stream.serializeSegment(seg, false);
-			displaySet.insert(displaySet.end(), segmentData.begin(), segmentData.end());
+			const PGSStream::PGSDisplaySet& displaySet = displaySets[index];
+			const int64_t displaySetNs =
+				static_cast<int64_t>(displaySet.pts) * 1'000'000'000 / 90000;
+			const int64_t displaySetPts = displaySetNs / timestampScale;
+			muxer.push(
+				mux_id(),
+				displaySet.data,
+				displaySetPts,
+				displaySetPts,
+				(index == 0) ? duration : 0,
+				0);
 		}
-
-		muxer.push(
-			mux_id(),
-			displaySet,
-			startPts,
-			startPts,
-			duration,
-			0);
 	}
 
 	return offset;

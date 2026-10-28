@@ -87,9 +87,10 @@ class TrackConverter
 
 		/** constructor.
 		 * @param trackinfo information about the assigned track.
+		 * @param defer_output_configuration if true, the output track will not be configured automatically.
+		 * The derived class must call configure_output_track() when ready.
 		 */
-		explicit TrackConverter(const TrackInfo& trackinfo);
-		TrackConverter(const TrackInfo& trackinfo, bool defer_output_configuration);
+		explicit TrackConverter(const TrackInfo& trackinfo, bool defer_output_configuration = false);
 
 		/** destructor. */
 		virtual ~TrackConverter(void);
@@ -120,7 +121,16 @@ class TrackConverter
 		 * @return muxer track ID.
 		 */
 		size_t mux_id(void) const;
-		void configure_output_track(const AVCodecParameters& parameters, AVRational time_base);
+
+		/** configure the output track.
+		 * @param parameters codec parameters for the output track.
+		 * @param time_base time base for the output track.
+		 */
+		void configure_output_track(const AVCodecParameters& parameters, const AVRational time_base);
+
+		/** mark the output track as failed.
+		 * This will cause the muxer to fail and abort the muxing process.
+		 */
 		void fail_output_track(void);
 
 		/** process packets of data.
@@ -141,7 +151,7 @@ class TrackConverter
 		std::condition_variable m_data_available;  ///< condition variable for signalling when more input data for the thread is available.
 		bool m_keep_running;                       ///< flag for stopping and exiting the thread.
 		const size_t m_mux_track_id;               ///< track ID for the output muxer.
-		bool m_output_configured;
+		bool m_output_configured;                  ///< flag indicating finished track configuration for the muxer.
 
 		/** thread loop for the converter.
 		 * This loop regularly checks the input queue and calls process_data().

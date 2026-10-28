@@ -357,11 +357,6 @@ void TrackMuxer::add_file(
 	}
 }
 
-size_t TrackMuxer::add_live_track(const TrackConverter::TrackInfo& info)
-{
-	return add_live_track(info, true);
-}
-
 size_t TrackMuxer::add_live_track(const TrackConverter::TrackInfo& info, const bool configured)
 {
 	if (m_mux_started)
@@ -391,7 +386,10 @@ size_t TrackMuxer::add_live_track(const TrackConverter::TrackInfo& info, const b
 		fillCodecParameters(info, track.output_stream->codecpar),
 		"avcodec_parameters_copy");
 
-	makeTimeBase(info.timestampScale, track.output_stream->time_base);
+	check_ffmpeg(
+		makeTimeBase(info.timestampScale, track.input_time_base),
+		"makeTimeBase");
+	track.output_stream->time_base = track.input_time_base;
 
 	if (!info.language.empty())
 	{
@@ -437,6 +435,7 @@ void TrackMuxer::configure_live_track(
 	check_ffmpeg(
 		avcodec_parameters_copy(track.output_stream->codecpar, &parameters),
 		"avcodec_parameters_copy");
+	track.input_time_base = time_base;
 	track.output_stream->time_base = time_base;
 	track.configuration = ConfigurationState::Ready;
 	m_configuration_changed.notify_all();
@@ -647,6 +646,11 @@ void TrackMuxer::mux(void)
 					// Diesen Track überspringen und andere Tracks prüfen.
 					continue;
 				}
+
+				av_packet_rescale_ts(
+					track->packet,
+					track->input_time_base,
+					track->output_stream->time_base);
 			}
 			else
 			{

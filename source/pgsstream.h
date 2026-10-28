@@ -60,6 +60,13 @@ class PGSStream {
 			std::vector<uint8_t> payload = {};
 		};
 
+		/** serialized display set with its presentation timestamp. */
+		struct PGSDisplaySet
+		{
+			uint32_t pts = 0;
+			std::vector<uint8_t> data = {};
+		};
+
 		/** adds an arbitrary amount of data to the stream.
 		 * If the stream contains a complete block, it is decoded as far as possible.
 		 * Complete frames are available immediately when decoded.
@@ -88,14 +95,11 @@ class PGSStream {
 		/** resets all buffers and counters for a new input stream. */
 		void reset(void);
 
-		/** encodes one frame as stream of PGS data.
-		 * @param frame frame to be stored.
+		/** encode one complete PCS composition as PGS display sets.
+		 * @param composition composition to be stored.
 		 * @param sbs_double flag for doubling all subtitles for SBS frame layout.
 		 * @return list of PGS segments.
 		 */
-		std::vector<PGSSegment> saveFrame(const PGSFrame& frame, const bool sbs_double);
-
-		/** encode one complete PCS composition as PGS display sets. */
 		std::vector<PGSSegment> saveComposition(
 			const PGSComposition& composition,
 			const bool sbs_double);
@@ -106,6 +110,10 @@ class PGSStream {
 		 * @return serialized segment.
 		 */
 		std::vector<uint8_t> serializeSegment(const PGSSegment& segment, const bool header) const;
+
+		/** serialize consecutive segments with matching timestamps as display sets. */
+		std::vector<PGSDisplaySet> serializeDisplaySets(
+			const std::vector<PGSSegment>& segments) const;
 
 	private:
 		/** segments stored inside a PGS stream. */
@@ -242,6 +250,17 @@ class PGSStream {
 			const uint8_t paletteId,
 			const uint8_t frame_copies) const;
 
+		/** write Presentation Composition Segment.
+		 * @param composition complete composition to be encoded.
+		 * @param objectIds list of object IDs to be displayed.
+		 * @param pts display timestamp of segment.
+		 * @param compositionNumber composition index.
+		 * @param compositionState timestamp reference.
+		 * @param paletteId palette ID, usually zero.
+		 * @param frame_copies number of copies to display. 0 means: hide all previous frames.
+		 * 1: show regular frame. 2: double the frame width and show frame on both SBS images.
+		 * @return PGS segment container.
+		 */
 		PGSSegment writePCS(
 			const PGSComposition& composition,
 			const std::vector<uint16_t>& objectIds,
@@ -260,6 +279,12 @@ class PGSStream {
 			const PGSFrame& frame,
 			const uint32_t pts) const;
 
+		/** write Window Definition Segment.
+		 * @param width width of window.
+		 * @param height height of window.
+		 * @param pts display timestamp of segment.
+		 * @return PGS segment container.
+		 */
 		PGSSegment writeWDS(
 			const uint16_t width,
 			const uint16_t height,

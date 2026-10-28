@@ -121,6 +121,16 @@ int main()
 	assert(!stream.hasNextComposition());
 
 	std::vector<PGSStream::PGSSegment> output = stream.saveComposition(composition, true);
+	const std::vector<PGSStream::PGSDisplaySet> displaySets =
+		stream.serializeDisplaySets(output);
+	assert(displaySets.size() == 2);
+	assert(displaySets[0].pts == 0);
+	assert(displaySets[1].pts == 90000);
+	assert(displaySets[0].data[0] == 0x16);
+	assert(displaySets[0].data[13] == 4);
+	assert(displaySets[1].data[0] == 0x16);
+	assert(displaySets[1].data[13] == 0);
+
 	const std::vector<PGSStream::PGSSegment> nextOutput = stream.saveComposition(nextComposition, true);
 	output.insert(output.end(), nextOutput.begin(), nextOutput.end());
 	uint32_t previousPcsPts = 0;

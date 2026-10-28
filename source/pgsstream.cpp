@@ -949,63 +949,6 @@ std::vector<PGSStream::PGSSegment> PGSStream::writeODS(
 	return segments;
 }
 
-std::vector<PGSStream::PGSSegment> PGSStream::saveFrame(const PGSFrame& frame, const bool sbs_double)
-{
-	if ((frame.time.s < 0.0) || (frame.time.t <= frame.time.s))
-	{
-		throw std::runtime_error("invalid frame timestamps");
-	}
-
-	if ((frame.screen.x == 0) || (frame.screen.y == 0))
-	{
-		throw std::runtime_error("invalid screen size");
-	}
-
-	if ((frame.size.x == 0) || (frame.size.y == 0))
-	{
-		throw std::runtime_error("invalid frame size");
-	}
-
-	if ((frame.position.x + frame.size.x > frame.screen.x) ||
-	    (frame.position.y + frame.size.y > frame.screen.y))
-	{
-		throw std::runtime_error("frame not contained in screen");
-	}
-
-	const uint32_t startPts = toPts(frame.time.s);
-	const uint32_t endPts   = toPts(frame.time.t);
-	const composition_t compositionState = (m_composition_id == 0) ? COMPOSITION_EPOCH_START : COMPOSITION_NORMAL;
-
-	Palette palette;
-	const std::vector<uint8_t> indexed = makeIndexedPixels(frame, palette);
-	const std::vector<uint8_t> rle = encodeRle(frame.size.x, frame.size.y, indexed);
-	std::vector<PGSSegment> segments;
-
-	const uint16_t objectId = 0;
-	PGSSegment seg;
-	seg = writePCS(frame, objectId, startPts, m_composition_id, compositionState, false, 0, sbs_double ? 2 : 1);
-	segments.push_back(seg);
-	m_composition_id++;
-
-	seg = writeWDS(frame, startPts);
-	segments.push_back(seg);
-	seg = writePDS(palette, startPts, 0);
-	segments.push_back(seg);
-	std::vector<PGSSegment> ods = writeODS(objectId, frame.size.x, frame.size.y, rle, startPts);
-	segments.insert(segments.end(), ods.begin(), ods.end());
-	seg = writeSegment(startPts, 0, END, {});
-	segments.push_back(seg);
-
-	// write empty display set to clear all subtitles.
-	seg = writePCS(frame, objectId, endPts, m_composition_id, COMPOSITION_NORMAL, false, 0, 0);
-	segments.push_back(seg);
-	m_composition_id++;
-	seg = writeSegment(endPts, 0, END, {});
-	segments.push_back(seg);
-
-	return segments;
-}
-
 std::vector<PGSStream::PGSSegment> PGSStream::saveComposition(
 	const PGSComposition& composition,
 	const bool sbs_double)
@@ -1051,7 +994,7 @@ std::vector<PGSStream::PGSSegment> PGSStream::saveComposition(
 			std::map<uint32_t, uint8_t>::const_iterator found = colorIndices.find(color);
 			if (found == colorIndices.end())
 			{
-				if (palette.size() == 255)
+				if (palette.size() >= 255)
 				{
 					throw std::runtime_error("PGS composition requires more than 255 palette entries");
 				}
@@ -1136,4 +1079,24 @@ std::vector<uint8_t> PGSStream::serializeSegment(const PGSSegment& segment, cons
 
 	buffer.insert(buffer.end(), segment.payload.begin(), segment.payload.end());
 	return buffer;
+}
+
+std::vector<PGSStream::PGSDisplaySet> PGSStream::serializeDisplaySets(
+	const std::vector<PGSSegment>& segments) const
+{
+	std::vector<PGSDisplaySet> displaySets;
+	for (const PGSSegment& segment : segments)
+	{
+		if (displaySets.empty() || displaySets.back().pts != segment.pts)
+		{
+			displaySets.push_back({segment.pts, {}});
+		}
+
+		std::vector<uint8_t> serialized = serializeSegment(segment, false);
+		displaySets.back().data.insert(
+			displaySets.back().data.end(),
+			serialized.begin(),
+			serialized.end());
+	}
+	return displaySets;
 }

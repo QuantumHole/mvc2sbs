@@ -27,6 +27,8 @@ class MVC2SBSConverter
 	public:
 		/** constructor.
 		 * @param muxer_id ID number of the muxed output stream.
+		 * @param configure_output callback function to configure the output track in the muxer.
+		 * @param fail_output callback function to mark the output track as failed in the muxer.
 		 */
 		explicit MVC2SBSConverter(
 			const size_t muxer_id,
@@ -104,9 +106,9 @@ class MVC2SBSConverter
 		AVPacket* m_packet_av = nullptr;         ///< AVPacket buffer.
 		size_t m_frame_index;                    ///< frame counter for timing information.
 		const size_t m_muxer_track_id;           ///< muxer track ID.
-		std::function<void(const AVCodecParameters&, AVRational)> m_configure_output;
-		std::function<void()> m_fail_output;
-		bool m_output_configured;
+		std::function<void(const AVCodecParameters&, AVRational)> m_configure_output;  ///< callback function to configure the output track in the muxer.
+		std::function<void()> m_fail_output;     ///< callback function to mark the output track as failed in the muxer.
+		bool m_output_configured;                ///< flag indicating finished track configuration for the muxer.
 };
 
 #endif
