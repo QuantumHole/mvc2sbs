@@ -20,11 +20,11 @@ H264Converter::H264Converter(const TrackInfo& info) :
 	m_mvc2sbs(
 		mux_id(),
 		[this](const AVCodecParameters& parameters, const AVRational time_base) {
-			configure_output_track(parameters, time_base);
-		},
+	configure_output_track(parameters, time_base);
+},
 		[this]() {
-			fail_output_track();
-		})
+	fail_output_track();
+})
 {
 	if (info.codecPrivate.size() < 5)
 	{
@@ -329,11 +329,11 @@ size_t H264Converter::process_data(const std::vector<uint8_t>& data, const Frame
 	}
 
 	const auto drop_frame = [&data, &info](const char* reason) {
-		std::cerr << "H264: skipping damaged frame " << info.index
-		          << " at " << (static_cast<double>(info.pts) / 1e9)
-		          << "s: " << reason << '\n';
-		return data.size();
-	};
+								std::cerr << "H264: skipping damaged frame " << info.index
+								          << " at " << (static_cast<double>(info.pts) / 1e9)
+								          << "s: " << reason << '\n';
+								return data.size();
+							};
 
 	std::vector<uint8_t> output_data;
 	const bool writing_codec_private = !m_codec_private_written;

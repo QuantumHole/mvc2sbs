@@ -48,6 +48,7 @@ static void appendSegment(
 static std::vector<uint8_t> makePcs(const uint32_t pts, const bool twoObjects)
 {
 	std::vector<uint8_t> payload;
+
 	put16(payload, 1920);
 	put16(payload, 1080);
 	payload.push_back(0x10);
@@ -56,6 +57,7 @@ static std::vector<uint8_t> makePcs(const uint32_t pts, const bool twoObjects)
 	payload.push_back(0);
 	payload.push_back(0);
 	payload.push_back(twoObjects ? 2 : 0);
+
 	if (twoObjects)
 	{
 		put16(payload, 1);
@@ -79,6 +81,7 @@ static void appendObject(
 	const uint8_t colorIndex)
 {
 	std::vector<uint8_t> payload;
+
 	put16(payload, objectId);
 	payload.push_back(0);
 	payload.push_back(0xc0);
@@ -94,6 +97,7 @@ static void appendObject(
 int main()
 {
 	std::vector<uint8_t> input = makePcs(0, true);
+
 	appendSegment(input, 0, 0x14, {0, 0, 1, 235, 128, 128, 255, 2, 81, 90, 240, 255});
 	appendObject(input, 1, 1);
 	appendObject(input, 2, 2);
@@ -147,6 +151,7 @@ int main()
 		const uint8_t objectCount = segment.payload[13];
 		assert(segment.pts >= previousPcsPts);
 		previousPcsPts = segment.pts;
+
 		if (pcsCount == 0)
 		{
 			assert(width == 3840);

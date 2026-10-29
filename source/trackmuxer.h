@@ -47,19 +47,21 @@ class TrackMuxer
 		/** result of live packet reception. */
 		typedef enum
 		{
-			PacketReady,		///< live packet available in queue.
+			PacketReady,        ///< live packet available in queue.
 			NoPacket,           ///< no live packet available in queue.
 			EndOfStream         ///< no more live packets will be submitted for this track.
-		} LivePacketResult;
+		}
+		LivePacketResult;
 
 		/** state of track configuration. */
-		enum class ConfigurationState
+		typedef enum
 		{
 			Ready,              ///< track is ready for configuration.
 			Pending,            ///< track is waiting for configuration.
 			Configured,         ///< track has been configured.
 			Failed              ///< track configuration has failed.
-		};
+		}
+		ConfigurationState;
 
 		/** information about one input track (file or stream). */
 		struct TrackFile
@@ -95,7 +97,7 @@ class TrackMuxer
 				packet(nullptr),
 				eof(false),
 				output_stream(nullptr),
-				input_time_base{0, 1},
+				input_time_base({0, 1}),
 				live(false),
 				finished(false),
 				configuration(ConfigurationState::Ready),

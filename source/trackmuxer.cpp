@@ -145,17 +145,18 @@ static int fillCodecParameters(const TrackConverter::TrackInfo& track, AVCodecPa
 	else if (par->codec_type == AVMEDIA_TYPE_AUDIO)
 	{
 		if (!std::isfinite(track.sampleRate) ||
-		    track.sampleRate < 1.0 ||
-		    track.sampleRate > static_cast<double>(INT_MAX) ||
-		    track.channels == 0 ||
-		    track.channels > static_cast<uint64_t>(INT_MAX))
+		    (track.sampleRate < 1.0) ||
+		    (track.sampleRate > static_cast<double>(INT_MAX)) ||
+		    (track.channels == 0) ||
+		    (track.channels > static_cast<uint64_t>(INT_MAX)))
 		{
 			return AVERROR(EINVAL);
 		}
 
 		par->sample_rate = static_cast<int>(std::lround(track.sampleRate));
 		av_channel_layout_default(&par->ch_layout, static_cast<int>(track.channels));
-		if (par->sample_rate <= 0 || par->ch_layout.nb_channels != static_cast<int>(track.channels))
+
+		if ((par->sample_rate <= 0) || (par->ch_layout.nb_channels != static_cast<int>(track.channels)))
 		{
 			return AVERROR(EINVAL);
 		}
@@ -231,7 +232,7 @@ TrackMuxer::TrackMuxer(const std::string& file_name) :
 			"avio_open");
 	}
 
-    av_log_set_level(AV_LOG_ERROR);
+	av_log_set_level(AV_LOG_ERROR);
 }
 
 TrackMuxer& TrackMuxer::instance(const std::string& file_name)
@@ -427,7 +428,8 @@ void TrackMuxer::configure_live_track(
 	}
 
 	TrackFile& track = m_tracks[track_id];
-	if (!track.live || track.configuration != ConfigurationState::Pending)
+
+	if (!track.live || (track.configuration != ConfigurationState::Pending))
 	{
 		throw std::logic_error("TrackMuxer::configure_live_track: track is not pending");
 	}
@@ -452,6 +454,7 @@ void TrackMuxer::fail_live_track(const size_t track_id)
 		}
 
 		TrackFile& track = m_tracks[track_id];
+
 		if (!track.live)
 		{
 			throw std::logic_error("TrackMuxer::fail_live_track: track is not live");
@@ -508,36 +511,36 @@ void TrackMuxer::push(
 
 TrackMuxer::LivePacketResult TrackMuxer::get_live_packet(TrackFile& track, AVPacket* packet)
 {
-    std::unique_lock<std::mutex> lock(track.mutex);
+	std::unique_lock<std::mutex> lock(track.mutex);
 
-    if (track.queue.empty())
-    {
-        return track.finished ? LivePacketResult::EndOfStream : LivePacketResult::NoPacket;
-    }
+	if (track.queue.empty())
+	{
+		return track.finished ? LivePacketResult::EndOfStream : LivePacketResult::NoPacket;
+	}
 
-    LivePacket live_packet = std::move(track.queue.front());
-    track.queue.pop_front();
-    lock.unlock();
+	LivePacket live_packet = std::move(track.queue.front());
+	track.queue.pop_front();
+	lock.unlock();
 
-    av_packet_unref(packet);
+	av_packet_unref(packet);
 
-    if (live_packet.data.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
-    {
-        throw std::runtime_error("Live packet is too large");
-    }
+	if (live_packet.data.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+	{
+		throw std::runtime_error("Live packet is too large");
+	}
 
-    check_ffmpeg(
-        av_new_packet(packet, static_cast<int>(live_packet.data.size())),
-        "av_new_packet");
+	check_ffmpeg(
+		av_new_packet(packet, static_cast<int>(live_packet.data.size())),
+		"av_new_packet");
 
-    std::copy(live_packet.data.begin(), live_packet.data.end(), packet->data);
+	std::copy(live_packet.data.begin(), live_packet.data.end(), packet->data);
 
-    packet->pts = live_packet.pts;
-    packet->dts = live_packet.dts;
-    packet->duration = live_packet.duration;
-    packet->flags = live_packet.flags;
+	packet->pts = live_packet.pts;
+	packet->dts = live_packet.dts;
+	packet->duration = live_packet.duration;
+	packet->flags = live_packet.flags;
 
-    return LivePacketResult::PacketReady;
+	return LivePacketResult::PacketReady;
 }
 
 void TrackMuxer::prepare_stream(void)
@@ -578,9 +581,9 @@ void TrackMuxer::prepare_stream(void)
 	}
 
 	/*
-		* Write Matroska header.
-		* All tracks must already have been added at this point.
-		*/
+	 * Write Matroska header.
+	 * All tracks must already have been added at this point.
+	 */
 	check_ffmpeg(
 		avformat_write_header(m_output_context, nullptr),
 		"avformat_write_header");
@@ -609,6 +612,7 @@ void TrackMuxer::mux(void)
 		{
 			{
 				std::lock_guard<std::mutex> lock(m_configuration_mutex);
+
 				if (m_configuration_failed)
 				{
 					throw std::runtime_error("A live track failed during muxing");
@@ -674,14 +678,13 @@ void TrackMuxer::mux(void)
 					av_packet_unref(track->packet);
 				}
 				/*
-				* Convert timestamps for file tracks.
-				*
-				* Live packets already use the output stream's
-				* time base.
-				*/
+				 * Convert timestamps for file tracks.
+				 *
+				 * Live packets already use the output stream's
+				 * time base.
+				 */
 				av_packet_rescale_ts(track->packet, track->input_stream->time_base, track->output_stream->time_base);
 			}
-
 
 			track->packet->stream_index = track->output_stream->index;
 
@@ -723,6 +726,7 @@ void TrackMuxer::finish_track(const size_t track_id)
 	TrackFile& track = m_tracks[track_id];
 	{
 		std::lock_guard<std::mutex> lock(m_configuration_mutex);
+
 		if (track.configuration == ConfigurationState::Pending)
 		{
 			track.configuration = ConfigurationState::Failed;

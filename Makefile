@@ -29,6 +29,7 @@ OBJECTS := \
 	$(BUILD_DIR)/trackmuxer.o \
 	$(BUILD_DIR)/copyconverter.o \
 	$(BUILD_DIR)/srtconverter.o \
+	$(BUILD_DIR)/srtcue.o \
 	$(BUILD_DIR)/timetools.o \
 	$(EDGE264_OBJECTS)
 
@@ -50,9 +51,9 @@ $(BUILD_DIR)/pgsstream_composition_test: source/tests/pgsstream_composition_test
 	@echo "[$(CXX)] PGS composition regression test"
 	@$(CXX) $(filter-out -c,$(CXXFLAGS)) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-$(BUILD_DIR)/srt_timestamp_test: source/tests/srt_timestamp_test.cpp source/timetools.cpp source/timetools.h | $(BUILD_DIR)
+$(BUILD_DIR)/srt_timestamp_test: source/tests/srt_timestamp_test.cpp source/timetools.cpp source/timetools.h source/srtcue.cpp source/srtcue.h | $(BUILD_DIR)
 	@echo "[$(CXX)] SRT timestamp regression test"
-	@$(CXX) $(filter-out -c,$(CXXFLAGS)) $(LDFLAGS) -o $@ source/tests/srt_timestamp_test.cpp source/timetools.cpp $(LDLIBS)
+	@$(CXX) $(filter-out -c,$(CXXFLAGS)) $(LDFLAGS) -o $@ source/tests/srt_timestamp_test.cpp source/timetools.cpp source/srtcue.cpp $(LDLIBS)
 
 $(TARGET): $(OBJECTS)
 	@echo "[$(LD)] $@"

@@ -184,6 +184,7 @@ static double GetAudioSampleRate(const libmatroska::KaxTrackEntry* track)
 	}
 
 	const libmatroska::KaxTrackAudio* audio = FindElement<libmatroska::KaxTrackAudio>(*track);
+
 	if (!audio)
 	{
 		return 8000.0;
@@ -202,6 +203,7 @@ static uint64_t GetAudioChannels(const libmatroska::KaxTrackEntry* track)
 	}
 
 	const libmatroska::KaxTrackAudio* audio = FindElement<libmatroska::KaxTrackAudio>(*track);
+
 	if (!audio)
 	{
 		return 1;
@@ -241,10 +243,11 @@ static uint64_t GetDefaultDuration(const libmatroska::KaxTrackEntry* track)
 
 static uint64_t GetGlobalTimecodeScale(const libmatroska::KaxTrackEntry* track)
 {
-    constexpr uint64_t defaultScale = 1'000'000; // nanoseconds
+	constexpr uint64_t defaultScale = 1'000'000; // nanoseconds
+
 	if (!track)
 	{
-        return defaultScale;
+		return defaultScale;
 	}
 
 	const libmatroska::KaxTimecodeScale* element = FindElement<libmatroska::KaxTimecodeScale>(*track);
@@ -387,7 +390,7 @@ std::string MKVStreamer::output_file_name(const std::string& input_file_name) co
 
 	return directory +
 	       input_file_name.substr(start, ext - start) +
-		   ".sbs" +
+	       ".sbs" +
 	       input_file_name.substr(ext);
 }
 

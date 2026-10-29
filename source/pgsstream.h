@@ -111,7 +111,10 @@ class PGSStream {
 		 */
 		std::vector<uint8_t> serializeSegment(const PGSSegment& segment, const bool header) const;
 
-		/** serialize consecutive segments with matching timestamps as display sets. */
+		/** serialize consecutive segments with matching timestamps as display sets.
+		 * @param segments list of PGS segments.
+		 * @return list of display sets, each with its own timestamp.
+		 */
 		std::vector<PGSDisplaySet> serializeDisplaySets(
 			const std::vector<PGSSegment>& segments) const;
 

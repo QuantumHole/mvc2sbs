@@ -45,10 +45,10 @@ static uint32_t readBE32(const std::vector<uint8_t>& data, const size_t offset)
 
 static void putBE16(std::vector<uint8_t>& out, uint16_t v)
 {
-    out.insert(out.end(), {
-        static_cast<uint8_t>((v >> 8) & 0xff),
-        static_cast<uint8_t>(v & 0xff)
-    });
+	out.insert(out.end(), {
+		static_cast<uint8_t>((v >> 8) & 0xff),
+		static_cast<uint8_t>(v & 0xff)
+	});
 }
 
 static void putBE24(std::vector<uint8_t>& out, uint32_t v)
@@ -399,6 +399,7 @@ void PGSStream::readPCS(
 	const uint8_t ds_paletteId = p[9];
 
 	require(ds_width != 0 && ds_height != 0, "PCS contains invalid frame size");
+
 	if (objectCount == 0)
 	{
 		return;
@@ -525,6 +526,7 @@ void PGSStream::readODS(const std::vector<uint8_t>& p)
 void PGSStream::composeFrame(void)
 {
 	PGSComposition composition;
+
 	if (m_compositions.empty())
 	{
 		return;
@@ -591,6 +593,7 @@ void PGSStream::composeFrame(void)
 		}
 		composition.objects.push_back(std::move(frame));
 	}
+
 	if (!composition.objects.empty())
 	{
 		m_frame_buffer.push_back(std::move(composition));
@@ -783,7 +786,8 @@ PGSStream::PGSSegment PGSStream::writePCS(
 {
 	std::vector<uint8_t> payload;
 	const uint32_t canvasWidth = static_cast<uint32_t>(composition.screen.x) *
-	    std::max<uint8_t>(1, frame_copies);
+	                             std::max<uint8_t>(1, frame_copies);
+
 	require(canvasWidth <= std::numeric_limits<uint16_t>::max(), "PGS canvas width overflow");
 	require(objectIds.size() * std::max<uint8_t>(1, frame_copies) <= 255, "Too many PGS composition objects");
 
@@ -815,6 +819,7 @@ PGSStream::PGSSegment PGSStream::writePCS(
 PGSStream::PGSSegment PGSStream::writeWDS(const PGSFrame& frame, const uint32_t pts) const
 {
 	std::vector<uint8_t> payload;
+
 	payload.push_back(1);
 	payload.push_back(0);
 	putBE16(payload, frame.position.x);
@@ -953,15 +958,16 @@ std::vector<PGSStream::PGSSegment> PGSStream::saveComposition(
 	const PGSComposition& composition,
 	const bool sbs_double)
 {
-	if (composition.objects.empty() || composition.time.s < 0.0 ||
-	    composition.time.t <= composition.time.s ||
-	    composition.screen.x == 0 || composition.screen.y == 0)
+	if (composition.objects.empty() || (composition.time.s < 0.0) ||
+	    (composition.time.t <= composition.time.s) ||
+	    (composition.screen.x == 0) || (composition.screen.y == 0))
 	{
 		return {};
 	}
 
 	const uint8_t copies = sbs_double ? 2 : 1;
 	const size_t compositionObjectCount = composition.objects.size() * copies;
+
 	if (compositionObjectCount > 255)
 	{
 		throw std::runtime_error("Too many PGS composition objects");
@@ -969,6 +975,7 @@ std::vector<PGSStream::PGSSegment> PGSStream::saveComposition(
 
 	const uint32_t startPts = toPts(composition.time.s);
 	const uint32_t endPts = toPts(composition.time.t);
+
 	if (endPts <= startPts)
 	{
 		return {};
@@ -976,13 +983,13 @@ std::vector<PGSStream::PGSSegment> PGSStream::saveComposition(
 
 	Palette palette;
 	std::map<uint32_t, uint8_t> colorIndices;
-	std::vector<std::vector<uint8_t>> objectIndices;
+	std::vector<std::vector<uint8_t> > objectIndices;
 	objectIndices.reserve(composition.objects.size());
 
 	for (const PGSFrame& object : composition.objects)
 	{
-		if (object.size.x == 0 || object.size.y == 0 ||
-		    object.pixels.size() != static_cast<size_t>(object.size.x) * object.size.y)
+		if ((object.size.x == 0) || (object.size.y == 0) ||
+		    (object.pixels.size() != static_cast<size_t>(object.size.x) * object.size.y))
 		{
 			throw std::runtime_error("Invalid PGS object dimensions");
 		}
@@ -992,6 +999,7 @@ std::vector<PGSStream::PGSSegment> PGSStream::saveComposition(
 		for (uint32_t color : object.pixels)
 		{
 			std::map<uint32_t, uint8_t>::const_iterator found = colorIndices.find(color);
+
 			if (found == colorIndices.end())
 			{
 				if (palette.size() >= 255)
@@ -1023,13 +1031,13 @@ std::vector<PGSStream::PGSSegment> PGSStream::saveComposition(
 	    ? COMPOSITION_EPOCH_START
 	    : COMPOSITION_NORMAL;
 	segments.push_back(writePCS(
-		composition,
-		objectIds,
-		startPts,
-		m_composition_id++,
-		state,
-		0,
-		copies));
+						   composition,
+						   objectIds,
+						   startPts,
+						   m_composition_id++,
+						   state,
+						   0,
+						   copies));
 	const uint16_t canvasWidth = static_cast<uint16_t>(composition.screen.x * copies);
 	segments.push_back(writeWDS(canvasWidth, composition.screen.y, startPts));
 	segments.push_back(writePDS(palette, startPts, 0));
@@ -1051,13 +1059,13 @@ std::vector<PGSStream::PGSSegment> PGSStream::saveComposition(
 	PGSComposition clearComposition;
 	clearComposition.screen = composition.screen;
 	segments.push_back(writePCS(
-		clearComposition,
-		{},
-		endPts,
-		m_composition_id++,
-		COMPOSITION_NORMAL,
-		0,
-		1));
+						   clearComposition,
+						   {},
+						   endPts,
+						   m_composition_id++,
+						   COMPOSITION_NORMAL,
+						   0,
+						   1));
 	segments.push_back(writeSegment(endPts, 0, END, {}));
 	return segments;
 }
@@ -1085,9 +1093,10 @@ std::vector<PGSStream::PGSDisplaySet> PGSStream::serializeDisplaySets(
 	const std::vector<PGSSegment>& segments) const
 {
 	std::vector<PGSDisplaySet> displaySets;
+
 	for (const PGSSegment& segment : segments)
 	{
-		if (displaySets.empty() || displaySets.back().pts != segment.pts)
+		if (displaySets.empty() || (displaySets.back().pts != segment.pts))
 		{
 			displaySets.push_back({segment.pts, {}});
 		}

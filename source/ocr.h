@@ -21,8 +21,6 @@ class OCR
 		 */
 		std::string fix_recognition_mistakes(const std::string& text) const;
 
-		
-
 	public:
 		/** constructor.
 		 * @param language track language, needed for initialization of tesseract.
