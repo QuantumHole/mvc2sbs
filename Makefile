@@ -31,6 +31,7 @@ OBJECTS := \
 	$(BUILD_DIR)/srtconverter.o \
 	$(BUILD_DIR)/srtcue.o \
 	$(BUILD_DIR)/timetools.o \
+	$(BUILD_DIR)/spectrum.o \
 	$(EDGE264_OBJECTS)
 
 CXXFLAGS += -isystem edge264-mvc

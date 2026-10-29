@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "mkvstreamer.h"
+#include "srtconverter.h"
 
 #include <string>
 #include <iostream>
@@ -16,6 +17,8 @@ int main(const int argc, const char** argv)
 	}
 
 	const std::string filename = argv[1];
+
+	SRTConverter::define_speakers({"Speaker 1", "Speaker 2", "Speaker 3"});
 
 	MKVStreamer mkv(filename);
 	mkv.run();

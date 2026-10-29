@@ -12,9 +12,18 @@
 class SRTConverter : public TrackConverter
 {
 	private:
-        const bool m_save_file;       ///< flag to indicate whether the SRT output file should be saved.
-		std::ofstream m_output_srt;   ///< output stream for the translation into SRT format.
-		size_t m_line_index;          ///< message counter for the SRT output.
+        /** collection of information about a speaker. */
+		struct Speaker
+		{
+			std::string name = "";  ///< name of the speaker.
+			std::string color = "FFFFFF"; ///< color associated with the speaker.
+		};
+
+		static std::vector<Speaker> m_speakers;  ///< mapping of speaker indices to speaker properties.
+
+		const bool m_save_file;             ///< flag to indicate whether the SRT output file should be saved.
+		std::ofstream m_output_srt;         ///< output stream for the translation into SRT format.
+		size_t m_line_index;                ///< message counter for the SRT output.
 
 		/** updates the track information for the SRT output.
 		 * @param info input track information.
@@ -22,12 +31,13 @@ class SRTConverter : public TrackConverter
 		 */
 		TrackConverter::TrackInfo update_track_info(const TrackInfo& info) const;
 
-		/** splits the input data into individual speaker segments.
-		 * @param data input data to be processed.
-		 * @param info frame information for the current packet of data.
-		 * @return number of consumed input bytes.
+		/** marks the speaker in the subtitle text.
+		 * @param text input subtitle text.
+		 * @param speaker_index index of the speaker to mark.
+		 * @param show_name flag to indicate whether to show the speaker's name.
+		 * @return modified subtitle text with speaker marker.
 		 */
-		size_t split_speakers(const std::vector<uint8_t>& data, const FrameInfo& info);
+		std::string sub2string(const std::string& text, const size_t speaker_index, const bool show_name) const;
 
 	public:
 		/** constructor.
@@ -43,6 +53,11 @@ class SRTConverter : public TrackConverter
 		 * @return number of processed bytes. This must be the size of data, everything else is considered an error.
 		 */
 		size_t process_data(const std::vector<uint8_t>& data, const FrameInfo& info) override;
+
+		/** defines the speakers for the SRT output.
+		 * @param speakers list of speaker names.
+		 */
+		static void define_speakers(const std::vector<std::string>& speakers);
 };
 
 #endif

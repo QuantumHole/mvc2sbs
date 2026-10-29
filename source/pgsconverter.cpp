@@ -151,7 +151,7 @@ PGSConverter::PGSConverter(const std::string& input_file_name, const TrackInfo& 
 	TrackConverter(info),
 	m_save_images(false),
 	m_pgs_stream(),
-	m_srt_converter(input_file_name, info, false),
+	m_srt_converter(input_file_name, info, true),
 	m_ocr(info.language)
 {
 }
