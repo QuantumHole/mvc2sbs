@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 QuantumHole <QuantumHole@github.com>
+//
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 #ifndef SRTCUE_H
 #define SRTCUE_H
 
