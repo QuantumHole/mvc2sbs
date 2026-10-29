@@ -8,6 +8,7 @@
 class SRTConverter : public TrackConverter
 {
 	private:
+        const bool m_save_file;       ///< flag to indicate whether the SRT output file should be saved.
 		std::ofstream m_output_srt;   ///< output stream for the translation into SRT format.
 		size_t m_line_index;          ///< message counter for the SRT output.
 
@@ -28,8 +29,9 @@ class SRTConverter : public TrackConverter
 		/** constructor.
 		 * @param input_file_name path to input file.
 		 * @param info information about the assigned track.
+		 * @param save_file flag to indicate whether the SRT output file should be saved.
 		 */
-		explicit SRTConverter(const std::string& input_file_name, const TrackInfo& info);
+		explicit SRTConverter(const std::string& input_file_name, const TrackInfo& info, const bool save_file = false);
 
 		/** process packets of data.
 		 * @param data one bunch of data to be processed. Data may be cut at arbitrary positions into packets.

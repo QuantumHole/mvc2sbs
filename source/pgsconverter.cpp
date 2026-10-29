@@ -151,7 +151,7 @@ PGSConverter::PGSConverter(const std::string& input_file_name, const TrackInfo& 
 	TrackConverter(info),
 	m_save_images(false),
 	m_pgs_stream(),
-	m_srt_converter(input_file_name, info),
+	m_srt_converter(input_file_name, info, false),
 	m_ocr(info.language)
 {
 }
@@ -178,9 +178,7 @@ void PGSConverter::append_ocr(const PGSStream::PGSFrame& frame)
 	srtInfo.dts = srtInfo.pts;
 	const uint64_t endNs = static_cast<uint64_t>(frame.time.t * 1e9 + 0.5);
 	srtInfo.duration = (endNs > srtInfo.pts) ? endNs - srtInfo.pts : 0;
-	m_srt_converter.process_data(
-		std::vector<uint8_t>(text.begin(), text.end()),
-		srtInfo);
+	m_srt_converter.process_data(std::vector<uint8_t>(text.begin(), text.end()), srtInfo);
 }
 
 size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameInfo& info)

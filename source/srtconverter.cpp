@@ -5,8 +5,9 @@
 
 #include <iostream>
 
-SRTConverter::SRTConverter(const std::string& input_file_name, const TrackInfo& info) :
+SRTConverter::SRTConverter(const std::string& input_file_name, const TrackInfo& info, const bool save_file) :
 	TrackConverter(update_track_info(info)),
+	m_save_file(save_file),
 	m_output_srt(input_file_name + "." + std::to_string(info.trackNumber) + "." + info.language + ".srt"),
 	m_line_index(0)
 {
@@ -35,15 +36,18 @@ size_t SRTConverter::split_speakers(const std::vector<uint8_t>& data, const Fram
 		const int64_t duration = static_cast<int64_t>(segment.durationNs / timestampScale);
 		muxer.push(mux_id(), segmentData, pts, pts, duration, 0);
 
-		m_output_srt << m_line_index << std::endl;
-		m_output_srt << timestamp(static_cast<double>(segment.startNs) / 1e9) << " --> "
-		             << timestamp(static_cast<double>(segment.startNs + segment.durationNs) / 1e9)
-		             << std::endl;
-		m_output_srt.write(
-			reinterpret_cast<const char*>(segmentData.data()),
-			static_cast<std::streamsize>(segmentData.size()));
-		m_output_srt << std::endl << std::endl;
-		m_line_index++;
+        if (m_save_file)
+        {
+            m_output_srt << m_line_index << std::endl;
+            m_output_srt << timestamp(static_cast<double>(segment.startNs) / 1e9) << " --> "
+                         << timestamp(static_cast<double>(segment.startNs + segment.durationNs) / 1e9)
+                         << std::endl;
+            m_output_srt.write(
+                reinterpret_cast<const char*>(segmentData.data()),
+                static_cast<std::streamsize>(segmentData.size()));
+            m_output_srt << std::endl << std::endl;
+            m_line_index++;
+        }
 	}
 
 	return data.size();
