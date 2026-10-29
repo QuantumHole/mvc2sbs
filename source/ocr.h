@@ -15,6 +15,14 @@ class OCR
 		tesseract::TessBaseAPI m_ocr;    ///< tesseract public API.
 		bool m_ocr_available;            ///< flag indicating that tesseract has been initialized.
 
+		/** fix common issues in text recognition.
+		 * @param text text to fix.
+		 * @return fixed text.
+		 */
+		std::string fix_recognition_mistakes(const std::string& text) const;
+
+		
+
 	public:
 		/** constructor.
 		 * @param language track language, needed for initialization of tesseract.

@@ -8,6 +8,7 @@
 #include "trackconverter.h"
 #include "pgsstream.h"
 #include "ocr.h"
+#include "srtconverter.h"
 
 /** reads MKV track into a list of PGS subtitle frames. */
 class PGSConverter : public TrackConverter
@@ -15,18 +16,13 @@ class PGSConverter : public TrackConverter
 	private:
 		const bool m_save_images;     ///< flag for storing all subtitles as PNG files.
 		PGSStream m_pgs_stream;       ///< handler for PGS specific decoding/encoding/editing
-		std::ofstream m_output_srt;   ///< output stream for the translation into SRT format.
+		SRTConverter m_srt_converter; ///< converter for handling SubRip subtitles.
 		OCR m_ocr;                    ///< interface to tesseract API.
-		size_t m_line_index;          ///< message counter for the SRT output.
-		size_t m_mux_id_srt;          ///< muxer ID for the OCR text track.
 
 		/** perform OCR, store images, write SRT as configured.
 		 * @param frame input frame for all configured actions.
 		 */
 		void append_ocr(const PGSStream::PGSFrame& frame);
-
-		/** called when processing loop has finished. */
-		void finish_processing(void) override;
 
 	public:
 		/** constructor.
@@ -34,9 +30,6 @@ class PGSConverter : public TrackConverter
 		 * @param trackinfo information about the assigned track.
 		 */
 		PGSConverter(const std::string& input_file_name, const TrackInfo& trackinfo);
-
-		/** destructor. */
-		virtual ~PGSConverter(void) override;
 
 		/** process packets of data.
 		 * @param data one bunch of data to be processed. Data may be cut at arbitrary positions into packets.

@@ -4,6 +4,7 @@
 
 #include "pgsconverter.h"
 #include "trackmuxer.h"
+#include "timetools.h"
 
 #include <iostream>
 #include <fstream>
@@ -22,27 +23,6 @@ static std::vector<uint8_t> writeUint32BE(const uint32_t value)
 	};
 
 	return data;
-}
-
-static std::string timestamp(const double seconds)
-{
-	const uint64_t totalMs =
-		static_cast<uint64_t>(seconds * 1000.0 + 0.5);
-
-	const uint64_t hours = totalMs / 3600000;
-	const uint64_t minutes = (totalMs / 60000) % 60;
-	const uint64_t secs = (totalMs / 1000) % 60;
-	const uint64_t millis = totalMs % 1000;
-
-	std::ostringstream result;
-
-	result << std::setfill('0')
-	       << std::setw(2) << hours << ":"
-	       << std::setw(2) << minutes << ":"
-	       << std::setw(2) << secs << "."
-	       << std::setw(3) << millis;
-
-	return result.str();
 }
 
 static bool saveRGBA32AsPNG(
@@ -171,23 +151,9 @@ PGSConverter::PGSConverter(const std::string& input_file_name, const TrackInfo& 
 	TrackConverter(info),
 	m_save_images(false),
 	m_pgs_stream(),
-	m_output_srt(input_file_name + "." + std::to_string(info.trackNumber) + "." + info.language + ".srt"),
-	m_ocr(info.language),
-	m_line_index(0),
-	m_mux_id_srt(0)
+	m_srt_converter(input_file_name, info),
+	m_ocr(info.language)
 {
-	TrackInfo srtinfo = info;
-	srtinfo.codecId = "S_TEXT/UTF8";
-	srtinfo.title += " SRT";
-
-	TrackMuxer& muxer = TrackMuxer::instance();
-	m_mux_id_srt = muxer.add_live_track(srtinfo);
-}
-
-PGSConverter::~PGSConverter(void)
-{
-	m_output_srt.flush();
-	m_output_srt.close();
 }
 
 void PGSConverter::append_ocr(const PGSStream::PGSFrame& frame)
@@ -207,21 +173,14 @@ void PGSConverter::append_ocr(const PGSStream::PGSFrame& frame)
 		return;
 	}
 
-	m_output_srt << m_line_index << std::endl;
-	m_output_srt << timestamp(frame.time.s) << " --> " << timestamp(frame.time.t) << std::endl;
-	m_output_srt << text << std::endl << std::endl;
-	m_line_index++;
-
-	std::vector<uint8_t> data(text.begin(), text.end());
-	TrackMuxer& muxer = TrackMuxer::instance();
-
-	muxer.push(
-		m_mux_id_srt,
-		data,
-		static_cast<int64_t>(frame.time.s * 1e9) / static_cast<int64_t>(track_info().timestampScale),
-		0,
-		static_cast<int64_t>((frame.time.t - frame.time.s) * 1e9) / static_cast<int64_t>(track_info().timestampScale),
-		0);
+	FrameInfo srtInfo;
+	srtInfo.pts = static_cast<uint64_t>(frame.time.s * 1e9 + 0.5);
+	srtInfo.dts = srtInfo.pts;
+	const uint64_t endNs = static_cast<uint64_t>(frame.time.t * 1e9 + 0.5);
+	srtInfo.duration = (endNs > srtInfo.pts) ? endNs - srtInfo.pts : 0;
+	m_srt_converter.process_data(
+		std::vector<uint8_t>(text.begin(), text.end()),
+		srtInfo);
 }
 
 size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameInfo& info)
@@ -327,12 +286,4 @@ size_t PGSConverter::process_data(const std::vector<uint8_t>& data, const FrameI
 	}
 
 	return offset;
-}
-
-void PGSConverter::finish_processing(void)
-{
-	if (m_mux_id_srt != 0)
-	{
-		TrackMuxer::instance().finish_track(m_mux_id_srt);
-	}
 }

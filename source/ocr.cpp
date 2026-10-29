@@ -4,6 +4,8 @@
 
 #include "ocr.h"
 
+#include <regex>
+
 static std::vector<uint8_t> rgbaToGreyscale(const std::vector<uint32_t>& pixels)
 {
 	std::vector<uint8_t> greyscale(pixels.size());
@@ -22,7 +24,7 @@ static std::vector<uint8_t> rgbaToGreyscale(const std::vector<uint32_t>& pixels)
 		g = static_cast<uint8_t>(a * g / 255);
 		b = static_cast<uint8_t>(a * b / 255);
 
-		// Wahrnehmungsgewichtete Umwandlung in Graustufen.
+		// sensitivity weighted conversion into grayscale
 		greyscale[i] = static_cast<uint8_t>((299 * r + 587 * g + 114 * b) / 1000);
 	}
 	return greyscale;
@@ -60,6 +62,15 @@ OCR::~OCR(void)
 	}
 }
 
+std::string OCR::fix_recognition_mistakes(const std::string& text) const
+{
+	// replace pipe with capital I, which is a common OCR error
+	const std::regex pipe_regex("\\|");
+	const std::string fixedText = std::regex_replace(text, pipe_regex, "I");
+
+	return fixedText;
+}
+
 std::string OCR::read_text(
 	const std::vector<uint32_t>& pixels,
 	const size_t width,
@@ -75,7 +86,7 @@ std::string OCR::read_text(
 		return "";
 	}
 
-	// Tesseract erhält ein 8-Bit-Graustufenbild.
+	// Tesseract gets an 8-bit grayscale image.
 	std::vector<uint8_t> greyscale = rgbaToGreyscale(pixels);
 
 	if (greyscale.size() == 0)
@@ -103,5 +114,5 @@ std::string OCR::read_text(
 	text.assign(recognizedText);
 	delete[] recognizedText;
 
-	return text;
+	return fix_recognition_mistakes(text);
 }

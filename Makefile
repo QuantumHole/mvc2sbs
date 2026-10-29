@@ -28,21 +28,31 @@ OBJECTS := \
 	$(BUILD_DIR)/mvc2sbsconverter.o \
 	$(BUILD_DIR)/trackmuxer.o \
 	$(BUILD_DIR)/copyconverter.o \
+	$(BUILD_DIR)/srtconverter.o \
+	$(BUILD_DIR)/timetools.o \
 	$(EDGE264_OBJECTS)
 
 CXXFLAGS += -isystem edge264-mvc
 
 .PHONY: all
 .PHONY: check-pgs
+.PHONY: check-srt-timestamps
 
 all: $(TARGET)
 
 check-pgs: $(BUILD_DIR)/pgsstream_composition_test
 	@$<
 
+check-srt-timestamps: $(BUILD_DIR)/srt_timestamp_test
+	@$<
+
 $(BUILD_DIR)/pgsstream_composition_test: source/tests/pgsstream_composition_test.cpp source/pgsstream.cpp | $(BUILD_DIR)
 	@echo "[$(CXX)] PGS composition regression test"
 	@$(CXX) $(filter-out -c,$(CXXFLAGS)) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+$(BUILD_DIR)/srt_timestamp_test: source/tests/srt_timestamp_test.cpp source/timetools.cpp source/timetools.h | $(BUILD_DIR)
+	@echo "[$(CXX)] SRT timestamp regression test"
+	@$(CXX) $(filter-out -c,$(CXXFLAGS)) $(LDFLAGS) -o $@ source/tests/srt_timestamp_test.cpp source/timetools.cpp $(LDLIBS)
 
 $(TARGET): $(OBJECTS)
 	@echo "[$(LD)] $@"
