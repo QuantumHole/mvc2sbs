@@ -9,6 +9,7 @@
 #include "spectrum.h"
 
 #include <iostream>
+#include <sstream>
 
 std::vector<SRTConverter::Speaker> SRTConverter::m_speakers;
 
